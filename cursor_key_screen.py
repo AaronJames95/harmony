@@ -1,82 +1,82 @@
-import tkinter as tk
-from tkinter import scrolledtext
-import queue
-import threading
+import flet as ft
 import time
 from datetime import datetime
 import csv
+import threading
 
-class PrecisionLoggerApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("System Heartbeat & Text Log")
-        self.text_queue = queue.Queue()
-        
-        # UI Setup
-        self.text_area = scrolledtext.ScrolledText(root, height=20, width=80, font=("Consolas", 10))
-        self.text_area.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+def main(page: ft.Page):
+    page.title = "High-Speed Heartbeat Logger"
+    page.theme_mode = ft.ThemeMode.DARK
+    page.vertical_alignment = ft.MainAxisAlignment.START
+    
+    # 1. Setup the UI Components
+    # Using a ListView for high-performance scrolling of text chunks
+    log_display = ft.ListView(
+        expand=True, 
+        spacing=0, 
+        auto_scroll=True,
+        padding=10
+    )
 
-        # FIX: Open file handle once for the life of the app
-        self.filename = f"activity_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        self.f = open(self.filename, 'w', newline='', buffering=1)
-        self.writer = csv.writer(self.f)
-        self.writer.writerow(["Timestamp", "Unix_Time", "Content_Length", "Content"])
+    # Status indicator (The heartbeat visual)
+    status_text = ft.Text("System Active", color=ft.colors.GREEN_400)
 
-        self.update_ui_loop()
+    # Add to page
+    page.add(
+        ft.Row([ft.Icon(ft.icons.REORDER), ft.Text("Real-Time Data Stream", weight="bold")]),
+        ft.Divider(),
+        ft.Container(
+            content=log_display,
+            border=ft.border.all(1, ft.colors.WHITE24),
+            border_radius=10,
+            expand=True,
+        ),
+        status_text
+    )
 
-    def update_ui_loop(self):
-        # FIX: Drain the entire queue every 10ms to prevent "lagging" behind
-        while not self.text_queue.empty():
-            try:
-                packet = self.text_queue.get_nowait()
-                raw_time = packet['time']
-                readable_time = datetime.fromtimestamp(raw_time).strftime('%H:%M:%S.%f')[:-3]
-                content = packet['text']
+    # 2. Setup Persistent Logging
+    filename = f"activity_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    f = open(filename, 'w', newline='', buffering=1)
+    writer = csv.writer(f)
+    writer.writerow(["Timestamp", "Unix_Time", "Content"])
 
-                # Fast write
-                self.writer.writerow([readable_time, raw_time, len(content), content])
+    def on_close(e):
+        f.close()
+        print("Log saved. Closing...")
 
-                if content.strip():
-                    #self.text_area.insert(tk.END, f"[{readable_time}] Data: {content}\n")
-                    self.text_area.see(tk.END)
-                    pass
-            except queue.Empty:
-                break
-        
-        self.root.after(10, self.update_ui_loop)
+    page.on_close = on_close
 
-    def on_closing(self):
-        """Important: Closes the file properly so data isn't lost."""
-        self.f.close()
-        self.root.destroy()
+    # 3. The Listener Logic
+    def continuous_listener():
+        while True:
+            # --- REPLACE THIS WITH YOUR MICROSOFT SPEECH CALL ---
+            check_time = time.time()
+            readable_time = datetime.fromtimestamp(check_time).strftime('%H:%M:%S.%f')[:-3]
+            
+            # Simulated data every 3 seconds for testing
+            if int(check_time) % 3 == 0:
+                text_data = "Heartbeat pulse detected..."
+            else:
+                text_data = ""
+            # ----------------------------------------------------
 
-def continuous_listener(q):
-    """Your data source. Replace the logic inside with your Whisper code."""
-    while True:
-        check_time = time.time()
-        
-        # Example logic: Only sends text every 5 seconds
-        if int(check_time) % 5 == 0:
-            text_data = "Heartbeat pulse detected."
-        else:
-            text_data = ""
+            if text_data:
+                # Log to CSV
+                writer.writerow([readable_time, check_time, text_data])
+                
+                # Update UI immediately
+                log_display.controls.append(
+                    ft.Text(f"[{readable_time}] {text_data}", font_family="Consolas")
+                )
+                
+                # Batch update the page (Flet handles the high-speed rendering)
+                page.update()
 
-        q.put({"text": text_data, "time": check_time})
-        
-        # Frequency of the heartbeat check
-        time.sleep(.1) 
+            time.sleep(0.1) # Check frequency
+
+    # Start the thread
+    thread = threading.Thread(target=continuous_listener, daemon=True)
+    thread.start()
 
 def run():
-    root = tk.Tk()
-    app = PrecisionLoggerApp(root)
-    
-    # Ensures the file closes when you click the 'X'
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    
-    # Start the background thread
-    threading.Thread(target=continuous_listener, args=(app.text_queue,), daemon=True).start()
-    
-    root.mainloop()
-
-if __name__ == "__main__":
-    run()
+    ft.app(target=main)
