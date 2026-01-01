@@ -1,82 +1,56 @@
-import flet as ft
+import webview
+import csv
 import time
 from datetime import datetime
-import csv
-import threading
 
-def main(page: ft.Page):
-    page.title = "High-Speed Heartbeat Logger"
-    page.theme_mode = ft.ThemeMode.DARK
-    page.vertical_alignment = ft.MainAxisAlignment.START
-    
-    # 1. Setup the UI Components
-    # Using a ListView for high-performance scrolling of text chunks
-    log_display = ft.ListView(
-        expand=True, 
-        spacing=0, 
-        auto_scroll=True,
-        padding=10
-    )
+# --- 1. THE FRONTEND (The Gemini-style Input Field) ---
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+        textarea { 
+            width: 90%; height: 150px; background: #1e1e1e; color: #81d4fa; 
+            border: 1px solid #333; border-radius: 10px; padding: 15px; font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <textarea id="box" autofocus placeholder="Win+H and speak..."></textarea>
+    <script>
+        document.getElementById('box').addEventListener('input', (e) => {
+            window.pywebview.api.ingest(e.target.value);
+        });
+    </script>
+</body>
+</html>
+"""
 
-    # Status indicator (The heartbeat visual)
-    status_text = ft.Text("System Active", color=ft.colors.GREEN_400)
+# --- 2. THE BACKEND (The Python Ingestion) ---
+class Ingestor:
+    def __init__(self):
+        self.last_text = ""
+        self.log_name = f"ingest_{int(time.time())}.csv"
+        with open(self.log_name, 'w', newline='') as f:
+            csv.writer(f).writerow(["Time", "Unix", "Text"])
 
-    # Add to page
-    page.add(
-        ft.Row([ft.Icon(ft.icons.REORDER), ft.Text("Real-Time Data Stream", weight="bold")]),
-        ft.Divider(),
-        ft.Container(
-            content=log_display,
-            border=ft.border.all(1, ft.colors.WHITE24),
-            border_radius=10,
-            expand=True,
-        ),
-        status_text
-    )
-
-    # 2. Setup Persistent Logging
-    filename = f"activity_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    f = open(filename, 'w', newline='', buffering=1)
-    writer = csv.writer(f)
-    writer.writerow(["Timestamp", "Unix_Time", "Content"])
-
-    def on_close(e):
-        f.close()
-        print("Log saved. Closing...")
-
-    page.on_close = on_close
-
-    # 3. The Listener Logic
-    def continuous_listener():
-        while True:
-            # --- REPLACE THIS WITH YOUR MICROSOFT SPEECH CALL ---
-            check_time = time.time()
-            readable_time = datetime.fromtimestamp(check_time).strftime('%H:%M:%S.%f')[:-3]
-            
-            # Simulated data every 3 seconds for testing
-            if int(check_time) % 3 == 0:
-                text_data = "Heartbeat pulse detected..."
-            else:
-                text_data = ""
-            # ----------------------------------------------------
-
-            if text_data:
+    def ingest(self, full_text):
+        # Calculate only what was JUST added
+        if full_text.startswith(self.last_text):
+            new_chunk = full_text[len(self.last_text):].strip()
+            if new_chunk:
+                ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"[{ts}] -> {new_chunk}")
+                
                 # Log to CSV
-                writer.writerow([readable_time, check_time, text_data])
+                with open(self.log_name, 'a', newline='') as f:
+                    csv.writer(f).writerow([ts, time.time(), new_chunk])
                 
-                # Update UI immediately
-                log_display.controls.append(
-                    ft.Text(f"[{readable_time}] {text_data}", font_family="Consolas")
-                )
-                
-                # Batch update the page (Flet handles the high-speed rendering)
-                page.update()
+                self.last_text = full_text
 
-            time.sleep(0.1) # Check frequency
-
-    # Start the thread
-    thread = threading.Thread(target=continuous_listener, daemon=True)
-    thread.start()
-
+# --- 3. THE RUNNER ---
 def run():
-    ft.app(target=main)
+    api = Ingestor()
+    window = webview.create_window('Native Voice Ingestor', html=HTML, js_api=api, width=500, height=350)
+    webview.start()
