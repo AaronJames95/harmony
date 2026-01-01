@@ -1,6 +1,7 @@
 import webview
 import csv
 import time
+import os
 from datetime import datetime
 
 # --- 1. THE FRONTEND (The Gemini-style Input Field) ---
@@ -28,26 +29,53 @@ HTML = """
 """
 
 # --- 2. THE BACKEND (The Python Ingestion) ---
+import threading
+
 class Ingestor:
     def __init__(self):
-        self.last_text = ""
-        self.log_name = f"ingest_{int(time.time())}.csv"
+        self.log_dir = "logs"
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir)
+        self.last_len = 0
+        #self.log_name = f"ingest_{int(time.time())}.csv"
+        self.log_name = os.path.join(self.log_dir, f"ingest_{int(time.time())}.csv")
+        self.buffer = ""
+        self.timer = None
+        
         with open(self.log_name, 'w', newline='') as f:
             csv.writer(f).writerow(["Time", "Unix", "Text"])
 
     def ingest(self, full_text):
-        # Calculate only what was JUST added
-        if full_text.startswith(self.last_text):
-            new_chunk = full_text[len(self.last_text):].strip()
-            if new_chunk:
-                ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-                print(f"[{ts}] -> {new_chunk}")
-                
-                # Log to CSV
-                with open(self.log_name, 'a', newline='') as f:
-                    csv.writer(f).writerow([ts, time.time(), new_chunk])
-                
-                self.last_text = full_text
+        current_len = len(full_text)
+        
+        if current_len > self.last_len:
+            # Capture the new data
+            new_data = full_text[self.last_len:]
+            self.buffer += new_data
+            self.last_len = current_len
+
+            # Start or reset a timer to "wait" for more words
+            if self.timer:
+                self.timer.cancel()
+            
+            # 0.3 seconds is the "sweet spot" for human speech chunks
+            self.timer = threading.Timer(0.3, self.flush_buffer)
+            self.timer.start()
+
+        elif current_len < self.last_len:
+            self.last_len = current_len
+
+    def flush_buffer(self):
+        """This only runs when the speaker pauses for a split second."""
+        text_to_save = self.buffer.strip()
+        if text_to_save:
+            ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"[{ts}] -> {text_to_save}")
+            
+            with open(self.log_name, 'a', newline='') as f:
+                csv.writer(f).writerow([ts, time.time(), text_to_save])
+        
+        self.buffer = "" # Clear buffer for next chunk
 
 # --- 3. THE RUNNER ---
 def run():
