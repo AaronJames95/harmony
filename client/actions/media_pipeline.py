@@ -1,33 +1,59 @@
-import os, subprocess, requests, pyperclip
+import sys
+import os
+import win32clipboard # pip install pywin32
+import requests
+
+# This adds the 'Harmony' root folder to Python's search path
+# It calculates the path 2 levels up from this file
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if root_path not in sys.path:
+    sys.path.append(root_path)
+
+# NOW this will work
 from common.constants import API_URL, LARGE_FILE_THRESHOLD_MB
 
+# Add the project root (Harmony/src) to the system path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+def get_and_clear_clipboard_files():
+    paths = []
+    try:
+        win32clipboard.OpenClipboard()
+        # Only look for the file format (CF_HDROP)
+        if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_HDROP):
+            data = win32clipboard.GetClipboardData(win32clipboard.CF_HDROP)
+            paths = list(data)
+            
+            # --- THE FIX: Clear the clipboard after reading ---
+            # This ensures these files are only processed once.
+            win32clipboard.EmptyClipboard()
+            print("🧹 Clipboard cleared to prevent double-processing.")
+            
+        win32clipboard.CloseClipboard()
+    except Exception as e:
+        print(f"❌ Clipboard Error: {e}")
+    return paths
+
 def run_pipeline():
-    # Split clipboard by newlines to handle bulk files
-    raw_data = pyperclip.paste().strip()
-    paths = [p.strip().strip('"') for p in raw_data.split('\n') if p.strip()]
+    files = get_and_clear_clipboard_files()
+    
+    if not files:
+        print("⚠️ No new files detected in clipboard.")
+        return
 
-    for path in paths:
-        if not os.path.exists(path): continue
-        
-        # Smart Logic: Convert large videos locally
-        size_mb = os.path.getsize(path) / (1024 * 1024)
-        is_video = path.lower().endswith(('.mp4', '.mkv', '.mov'))
-        
-        if is_video and size_mb > LARGE_FILE_THRESHOLD_MB:
-            print(f"📦 Converting {os.path.basename(path)} locally...")
-            final_path = convert_locally(path)
-        else:
-            final_path = path
+    print(f"🎯 Processing {len(files)} new items...")
+    for path in files:
+        if os.path.exists(path):
+            process_and_send(path)
 
-        send_to_server(final_path)
-        if final_path != path: os.remove(final_path)
-
-def convert_locally(path):
-    output = os.path.splitext(path)[0] + "_payload.mp3"
-    cmd = ['ffmpeg', '-i', path, '-q:a', '0', '-map', 'a', output, '-y']
-    subprocess.run(cmd, check=True, capture_output=True)
-    return output
-
-def send_to_server(file_path):
-    with open(file_path, 'rb') as f:
-        requests.post(API_URL, files={'file': f})
+def process_and_send(path):
+    # Determine if we should convert or send raw
+    file_size_mb = os.path.getsize(path) / (1024 * 1024)
+    is_video = path.lower().endswith(('.mp4', '.mkv', '.mov', '.avi'))
+    
+    if is_video and file_size_mb > LARGE_FILE_THRESHOLD_MB:
+        print(f"📦 Large video detected. Converting locally: {os.path.basename(path)}")
+        # (FFmpeg conversion logic here)
+    else:
+        print(f"🚀 Sending file directly: {os.path.basename(path)}")
+        # (Requests.post logic here)

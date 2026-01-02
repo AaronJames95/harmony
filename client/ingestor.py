@@ -3,9 +3,8 @@ import time
 import os
 import threading
 import webbrowser
-import pyperclip
-import requests
 from datetime import datetime
+from actions import media_pipeline
 
 class Ingestor:
     def __init__(self):
@@ -37,32 +36,24 @@ class Ingestor:
             with open(self.log_name, 'a', newline='', encoding='utf-8') as f:
                 csv.writer(f).writerow([ts, time.time(), text_to_save])
             
-            print(f"DEBUG: Processed phrase: {text_to_save}")
+            # This is where the magic happens
             self.process_commands(text_to_save)
             
         self.buffer = ""
 
     def process_commands(self, text):
         clean_text = text.lower()
-        watchword = "shema"
-        if watchword in clean_text:
-            print("✨ Trigger Detected: Shema")
+        
+        if "shema" in clean_text:
+            print(f"✨ HUD Command Detected: {clean_text}")
             
-            if watchword + " gemini" in clean_text:
-                print("🚀 Opening Gemini...")
+            if "gemini" in clean_text:
                 webbrowser.open("https://gemini.google.com/app")
                 
-            elif watchword + " process" in clean_text or "transcription" in clean_text:
-                print("🚀 Transcription Trigger Detected.")
-                self.trigger_transcription_pipeline()
-
-    def trigger_transcription_pipeline(self):
-        raw_clipboard = pyperclip.paste().strip()
-        paths = [p.strip().strip('"') for p in raw_clipboard.split('\n') if p.strip()]
-        
-        if not paths:
-            print("⚠️ No paths in clipboard.")
-            return
-
-        print(f"📦 Shipping {len(paths)} items to AI Workstation...")
-        # (This is where your requests.post logic from the roadmap goes)
+            elif "process" in clean_text or "transcription" in clean_text:
+                # Call the specific media pipeline action
+                media_pipeline.run_pipeline()
+                
+            elif "shutdown" in clean_text:
+                print("🚨 Shutdown initiated...")
+                os._exit(0)
