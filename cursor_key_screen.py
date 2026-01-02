@@ -69,6 +69,8 @@ class Ingestor:
         """This only runs when the speaker pauses for a split second."""
         text_to_save = self.buffer.strip()
         if text_to_save:
+            #assert(type(text_to_save)==str)
+            #if "joy" in text_to_save: print("Again I will say, rejoice")
             ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
             print(f"[{ts}] -> {text_to_save}")
             
