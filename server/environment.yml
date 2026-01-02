@@ -1,0 +1,23 @@
+name: muscular_env
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8  # Match your GPU's CUDA version
+  - fastapi
+  - uvicorn
+  - openai-whisper
+  - python-multipart
+  - requests
+  - pyperclip
+  - ffmpeg
+  - pip
+  - pip:
+      - pygetwindow
+      - pyautogui
