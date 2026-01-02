@@ -88,9 +88,16 @@ class Ingestor:
                 csv.writer(f).writerow([ts, time.time(), text_to_save])
             print(f"[{ts}] -> {text_to_save}")
         self.buffer = ""
+from PyQt6.QtCore import pyqtSignal
 
+
+       
 # --- 3. THE GUI ---
 class OverlayWindow(QMainWindow):
+    # Create a custom signal that sends a string
+    text_received = pyqtSignal(str)
+
+
     def __init__(self):
         super().__init__()
         self.api = Ingestor()
@@ -115,6 +122,8 @@ class OverlayWindow(QMainWindow):
         self.showFullScreen()
 
     def on_text_changed(self):
+        # Emit the signal so other modules can 'hear' it
+        self.text_received.emit(text)
         text = self.input_box.toPlainText()
         self.api.ingest(text)
         self.watchdog.update_activity() # Reset the 12s timer
