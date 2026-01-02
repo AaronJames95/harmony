@@ -1,25 +1,14 @@
 import sys
-import csv
-import time
 import os
 import threading
 import winsound
-from datetime import datetime
+import time
+import pygetwindow as gw
+from PyQt6.QtWidgets import QMainWindow, QTextEdit, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, pyqtSignal
 from win10toast import ToastNotifier
-import pygetwindow as gw  # This 'as gw' is what defines the name
 
-# GUI Imports
-from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QVBoxLayout, QWidget
-from PyQt6.QtCore import Qt
-
-# Watchdog Imports (Install via: pip install pygetwindow win10check)
-try:
-    import pygetwindow as gw
-    from win10check import ToastNotifier
-except ImportError:
-    print("Missing libraries. Run: pip install pygetwindow win10check")
-
-# --- 1. THE WATCHDOG (Definition) ---
+# --- THE WATCHDOG ---
 class DictationWatchdog:
     def __init__(self, timeout=12):
         self.timeout = timeout
@@ -31,23 +20,25 @@ class DictationWatchdog:
         self.last_activity = time.time()
 
     def check_if_dictation_running(self):
-        # Look for the Windows Dictation toolbar
-        return len(gw.getWindowsWithTitle('Dictation')) > 0
+        # Broaden search for Windows Dictation bar
+        titles = ['Dictation', 'Voice typing', 'Voice access', 'Microsoft Text Input']
+        all_windows = gw.getAllTitles()
+        return any(any(t.lower() in w.lower() for t in titles) for w in all_windows)
 
     def start(self):
         threading.Thread(target=self._watch_loop, daemon=True).start()
 
     def _watch_loop(self):
+        import time # Ensure local import for thread
         while self.is_monitoring:
             if self.check_if_dictation_running():
                 elapsed = time.time() - self.last_activity
                 if elapsed > self.timeout:
                     self.notify_user()
-                    self.last_activity = time.time() # Reset to avoid spamming
+                    self.last_activity = time.time()
             time.sleep(1)
 
     def notify_user(self):
-        # Play a HUD-style beep (Frequency: 1000Hz, Duration: 300ms)
         winsound.Beep(1000, 300)
         self.toaster.show_toast(
             "Reclaiming Joy 2026",
@@ -56,54 +47,17 @@ class DictationWatchdog:
             threaded=True
         )
 
-# --- 2. THE INGESTOR (Log Logic) ---
-class Ingestor:
-    def __init__(self):
-        self.log_dir = "logs"
-        if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
-        self.last_len = 0
-        self.log_name = os.path.join(self.log_dir, f"ingest_{int(time.time())}.csv")
-        self.buffer = ""
-        self.timer = None
-        
-        with open(self.log_name, 'w', newline='') as f:
-            csv.writer(f).writerow(["Time", "Unix", "Text"])
-
-    def ingest(self, full_text):
-        current_len = len(full_text)
-        if current_len > self.last_len:
-            self.buffer += full_text[self.last_len:]
-            self.last_len = current_len
-            if self.timer: self.timer.cancel()
-            self.timer = threading.Timer(0.3, self.flush_buffer)
-            self.timer.start()
-        elif current_len < self.last_len:
-            self.last_len = current_len
-
-    def flush_buffer(self):
-        text_to_save = self.buffer.strip()
-        if text_to_save:
-            ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            with open(self.log_name, 'a', newline='') as f:
-                csv.writer(f).writerow([ts, time.time(), text_to_save])
-            print(f"[{ts}] -> {text_to_save}")
-        self.buffer = ""
-from PyQt6.QtCore import pyqtSignal
-
-
-       
-# --- 3. THE GUI ---
+# --- THE GUI ---
 class OverlayWindow(QMainWindow):
-    # Create a custom signal that sends a string
     text_received = pyqtSignal(str)
-
 
     def __init__(self):
         super().__init__()
-        self.api = Ingestor()
-        self.watchdog = DictationWatchdog(timeout=12) # Now defined!
+        # Initialize Watchdog
+        self.watchdog = DictationWatchdog(timeout=12)
         self.watchdog.start()
 
+        # Window Setup
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
@@ -121,26 +75,8 @@ class OverlayWindow(QMainWindow):
         self.layout.addWidget(self.input_box)
         self.showFullScreen()
 
-
-        # 1. Grab the text FIRST
-        text = self.input_box.toPlainText()
-        
-        # 2. NOW it's safe to use the 'text' variable
-        self.text_received.emit(text) 
-        self.api.ingest(text)
-        self.watchdog.update_activity() # Resets the 12s timer
-
     def on_text_changed(self):
-        # 1. Grab the text FIRST
         text = self.input_box.toPlainText()
-        
-        # Emit the signal so other modules can 'hear' it
-        self.text_received.emit(text)
-        text = self.input_box.toPlainText()
-        self.api.ingest(text)
+        # EMIT SIGNAL: This is what connects to your external Ingestor
+        self.text_received.emit(text) 
         self.watchdog.update_activity() # Reset the 12s timer
-
-def run():
-    app = QApplication(sys.argv)
-    window = OverlayWindow()
-    sys.exit(app.exec())
