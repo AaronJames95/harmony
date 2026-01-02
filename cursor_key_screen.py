@@ -1,86 +1,83 @@
-import webview
+import sys
 import csv
 import time
 import os
-from datetime import datetime
-
-# --- 1. THE FRONTEND (The Gemini-style Input Field) ---
-HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { background-color: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
-        textarea { 
-            width: 90%; height: 150px; background: #1e1e1e; color: #81d4fa; 
-            border: 1px solid #333; border-radius: 10px; padding: 15px; font-size: 18px;
-        }
-    </style>
-</head>
-<body>
-    <textarea id="box" autofocus placeholder="Win+H and speak..."></textarea>
-    <script>
-        document.getElementById('box').addEventListener('input', (e) => {
-            window.pywebview.api.ingest(e.target.value);
-        });
-    </script>
-</body>
-</html>
-"""
-
-# --- 2. THE BACKEND (The Python Ingestion) ---
 import threading
+from datetime import datetime
+from PyQt6.QtWidgets import QApplication, QMainWindow, QTextEdit, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, QTimer
 
-class Ingestor:
+class IngestorBackend:
     def __init__(self):
         self.log_dir = "logs"
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-        self.last_len = 0
-        #self.log_name = f"ingest_{int(time.time())}.csv"
+        if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
         self.log_name = os.path.join(self.log_dir, f"ingest_{int(time.time())}.csv")
-        self.buffer = ""
-        self.timer = None
-        
+        self.last_text = ""
         with open(self.log_name, 'w', newline='') as f:
             csv.writer(f).writerow(["Time", "Unix", "Text"])
 
-    def ingest(self, full_text):
-        current_len = len(full_text)
+    def save_chunk(self, text):
+        ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+        with open(self.log_name, 'a', newline='') as f:
+            csv.writer(f).writerow([ts, time.time(), text.strip()])
+        print(f"Saved: {text.strip()}")
+
+class OverlayWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.backend = IngestorBackend()
         
-        if current_len > self.last_len:
-            # Capture the new data
-            new_data = full_text[self.last_len:]
-            self.buffer += new_data
-            self.last_len = current_len
-
-            # Start or reset a timer to "wait" for more words
-            if self.timer:
-                self.timer.cancel()
-            
-            # 0.3 seconds is the "sweet spot" for human speech chunks
-            self.timer = threading.Timer(0.3, self.flush_buffer)
-            self.timer.start()
-
-        elif current_len < self.last_len:
-            self.last_len = current_len
-
-    def flush_buffer(self):
-        """This only runs when the speaker pauses for a split second."""
-        text_to_save = self.buffer.strip()
-        if text_to_save:
-            #assert(type(text_to_save)==str)
-            #if "joy" in text_to_save: print("Again I will say, rejoice")
-            ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            print(f"[{ts}] -> {text_to_save}")
-            
-            with open(self.log_name, 'a', newline='') as f:
-                csv.writer(f).writerow([ts, time.time(), text_to_save])
+        # 1. THE MAGIC FLAGS
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |       # No borders
+            Qt.WindowType.WindowStaysOnTopHint |      # Always on top
+            Qt.WindowType.Tool                        # Don't show in taskbar
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) # The Transparency
         
-        self.buffer = "" # Clear buffer for next chunk
+        # 2. THE LAYOUT
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.layout = QVBoxLayout(self.central_widget)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
-# --- 3. THE RUNNER ---
+        # 3. THE INPUT BOX
+        self.input_box = QTextEdit()
+        self.input_box.setPlaceholderText("Reclaiming Joy 2026...")
+        self.input_box.setFixedSize(300, 100)
+        self.input_box.setStyleSheet("""
+            QTextEdit {
+                background-color: rgba(30, 30, 30, 200); 
+                color: #81d4fa;
+                border: 2px solid #444;
+                border-radius: 10px;
+                font-size: 16px;
+                padding: 10px;
+            }
+        """)
+        self.layout.addWidget(self.input_box)
+
+        # 4. CAPTURE LOGIC
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.flush_to_csv)
+        self.input_box.textChanged.connect(self.handle_typing)
+
+        # Set to full screen size but keep it transparent
+        self.showFullScreen()
+
+    def handle_typing(self):
+        # Reset the "silence" timer every time you type/speak
+        self.timer.start(500) # 0.5 seconds of silence = save
+
+    def flush_to_csv(self):
+        current_text = self.input_box.toPlainText()
+        if current_text:
+            self.backend.save_chunk(current_text)
+            # Optional: clear the box after saving to keep the HUD clean
+            # self.input_box.clear() 
+
 def run():
-    api = Ingestor()
-    window = webview.create_window('Native Voice Ingestor', html=HTML, js_api=api, width=500, height=350)
-    webview.start()
+    app = QApplication(sys.argv)
+    overlay = OverlayWindow()
+    sys.exit(app.exec())
