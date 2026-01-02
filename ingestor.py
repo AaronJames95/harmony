@@ -74,10 +74,15 @@ class Ingestor:
             print("✨ Trigger Detected: Shema")
             
             # Switch Logic
-            if "gemini" in clean_text:
+            if "shema gemini" in clean_text:
                 print("🚀 Opening Gemini...")
                 webbrowser.open("https://gemini.google.com/app")
+                #self.gemini_prompt
                 
+            elif "shema shabbat" in clean_text:
+                print("⚖️ Command: Emet (Verification)")
+                # Logic for Emet can go here
+
             elif "emet" in clean_text:
                 print("⚖️ Command: Emet (Verification)")
                 # Logic for Emet can go here
@@ -89,3 +94,15 @@ class Ingestor:
             elif "clear" in clean_text:
                 print("🧹 Command: Clear HUD")
                 # This would typically emit a signal back to the UI
+
+                def process_voice_commands(self, text):
+                    phrase = text.lower()
+                    if "shema" in phrase:
+                        # The switch statement for commands
+                        if "gemini" in phrase:
+                            import webbrowser
+                            webbrowser.open("https://gemini.google.com/app")
+                        elif "emet" in phrase:
+                            print("Action: Fact-checking last statement...")
+                        elif "shuv" in phrase:
+                            self.trigger_rewind_summary()

@@ -121,7 +121,19 @@ class OverlayWindow(QMainWindow):
         self.layout.addWidget(self.input_box)
         self.showFullScreen()
 
+
+        # 1. Grab the text FIRST
+        text = self.input_box.toPlainText()
+        
+        # 2. NOW it's safe to use the 'text' variable
+        self.text_received.emit(text) 
+        self.api.ingest(text)
+        self.watchdog.update_activity() # Resets the 12s timer
+
     def on_text_changed(self):
+        # 1. Grab the text FIRST
+        text = self.input_box.toPlainText()
+        
         # Emit the signal so other modules can 'hear' it
         self.text_received.emit(text)
         text = self.input_box.toPlainText()
