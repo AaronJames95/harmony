@@ -1,11 +1,11 @@
 import cursor_key_screen
 import transcript_listener
-import navi
+#import navi
 
 def main():
     print("Hello, World!")
     cursor_key_screen.run()
-    navi.
+    #navi.
 
 def shema():
     OBSlistener()
