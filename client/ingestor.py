@@ -44,14 +44,15 @@ class Ingestor:
 
     def process_commands(self, text):
         clean_text = text.lower()
-        if "shema" in clean_text:
+        watchword = "shema"
+        if watchword in clean_text:
             print("✨ Trigger Detected: Shema")
             
-            if "gemini" in clean_text:
+            if watchword + " gemini" in clean_text:
                 print("🚀 Opening Gemini...")
                 webbrowser.open("https://gemini.google.com/app")
                 
-            elif "process" in clean_text or "transcription" in clean_text:
+            elif watchword + " process" in clean_text or "transcription" in clean_text:
                 print("🚀 Transcription Trigger Detected.")
                 self.trigger_transcription_pipeline()
 
