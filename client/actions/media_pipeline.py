@@ -26,18 +26,28 @@ def get_and_clear_clipboard_files():
     return paths
 
 def convert_to_audio(video_path):
-    """Extracts audio locally to save bandwidth."""
     output_audio = os.path.splitext(video_path)[0] + "_payload.mp3"
-    print(f"🎬 Extracting audio from {os.path.basename(video_path)}...")
+    print(f"🎬 Extracting audio: {os.path.basename(video_path)}...")
     
-    # FFmpeg: Extract audio only, high quality, overwrite if exists
+    # We use shell=True on Windows sometimes to help find executables, 
+    # but usually, having it in the PATH is better.
     cmd = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_audio, '-y']
     
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
-        return output_audio
-    except Exception as e:
-        print(f"❌ FFmpeg failed: {e}")
+        # We add 'shell=True' here as a safety measure for Windows paths
+        subprocess.run(cmd, check=True, capture_output=True, shell=True)
+        
+        # Verify the file actually exists before returning the path
+        if os.path.exists(output_audio):
+            return output_audio
+        else:
+            print(f"❌ FFmpeg finished but {output_audio} was not created.")
+            return None
+    except subprocess.CalledProcessError as e:
+        print(f"❌ FFmpeg Error: {e.stderr.decode()}")
+        return None
+    except FileNotFoundError:
+        print("❌ CRITICAL: FFmpeg is not installed or not in your Windows PATH.")
         return None
 
 def send_to_server(file_path):
