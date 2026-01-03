@@ -1,0 +1,10 @@
+# Root / Client ignores
+logs/
+__pycache__/
+*.db
+.env
+
+# Server-specific ignores (using relative paths)
+server/.env
+server/uploads/
+server/__pycache__/

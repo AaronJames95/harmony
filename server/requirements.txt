@@ -1,0 +1,5 @@
+flask
+openai-whisper
+requests
+python-dotenv
+setuptools-rust
