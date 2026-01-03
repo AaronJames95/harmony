@@ -673,3 +673,35 @@
 [16:01:42.090] Hi
 [16:01:49.531] print log
 [16:01:55.458] shema print log
+[16:02:35.318] Shaman quit
+
+--- SESSION START: 2026-01-03 16:25:02 (ID: 1767475502) ---
+[16:25:05.926] H
+
+--- SESSION START: 2026-01-03 16:26:36 (ID: 1767475596) ---
+[16:26:44.102] OK cool
+[16:27:02.235] See it's actually already starting to happen the idea I just had was that when I turn this thing on if it automatically puts the cursor in the thing that pops up and the microphone the transcription thing auto comes on that would be sick
+[16:27:09.220] . Shema hello
+[16:27:18.335] Oh great it's not reading me it's not even listening to me
+
+--- SESSION START: 2026-01-03 16:28:19 (ID: 1767475699) ---
+[16:28:25.750] Hello
+[16:28:29.778] OK you're recording me.
+[16:28:34.521] Shema hello
+[16:28:44.954] Shema print log
+[16:30:02.688] Shut down
+[16:30:05.576] Shema shut down
+
+--- SESSION START: 2026-01-03 16:30:32 (ID: 1767475832) ---
+[16:30:38.984] Shema writes
+
+--- SESSION START: 2026-01-03 16:40:44 (ID: 1767476444) ---
+[16:40:56.694] H
+[16:41:03.139] Hey how are you doing today.
+[16:41:19.075] Shimmer
+[16:41:23.364] Shama
+[16:42:30.860] Shamaquit
+[16:42:45.294] Shema Wright
+[16:42:50.947] Shema Wright
+[16:42:56.374] Shema Ryder
+[16:43:01.506] Shema writes
