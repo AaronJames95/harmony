@@ -1,10 +1,20 @@
 import os
 
+# Set your absolute Linux path here
+# Example: "/home/username/transcripts" or "/var/www/output"
+DESTINATION = "/home/aharon/Desktop/2_Roots/Second Brain/vault-alpha/2_Roots/Harmony/output/transcripts" 
+
 def deliver_transcript(markdown_text, original_filename):
     """
     Handles the final output of the AI pipeline.
     """
-    output_dir = os.path.join(os.path.dirname(__file__), "transcripts")
+    # Use the destination variable; expanduser() allows you to use '~' in the path
+    if DESTINATION:
+        output_dir = os.path.expanduser(DESTINATION)
+    else:
+        output_dir = os.path.join(os.path.dirname(__file__), "transcripts")
+    
+    # Create the directory (and any parent directories) if they don't exist
     os.makedirs(output_dir, exist_ok=True)
     
     file_name = f"{original_filename}.md"

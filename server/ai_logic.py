@@ -12,7 +12,8 @@ def run_transcription_pipeline(file_path, original_name):
         result = model.transcribe(file_path)
         
         # Format the text
-        md_output = f"# Transcript: {original_name}\n\n"
+        md_output = f"#transcript #ai_gen\n\n"
+        md_output += f"# Transcript: {original_name}\n\n"
         for segment in result['segments']:
             start = time.strftime('%H:%M:%S', time.gmtime(segment['start']))
             md_output += f"**[{start}]** {segment['text']}  \n"
