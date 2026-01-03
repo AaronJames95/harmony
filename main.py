@@ -4,11 +4,13 @@ import sys
 import os
 
 def start_server():
-    """Launches the FastAPI server on Linux."""
     print("🧠 Starting Muscular AI Server...")
-    # Using 'python -m uvicorn' ensures we use the correct environment paths
+    env = os.environ.copy()
+    # Forces Python to use ONLY the Mamba environment libraries
+    env["PYTHONNOUSERSITE"] = "1" 
+    
     cmd = [sys.executable, "-m", "uvicorn", "server.server_main:app", "--host", "0.0.0.0", "--port", "8000"]
-    subprocess.run(cmd)
+    subprocess.run(cmd, env=env)
 
 def start_client():
     """Launches the HUD HUD on Windows."""
