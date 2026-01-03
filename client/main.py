@@ -12,10 +12,10 @@ def main():
     gui.text_received.connect(logger.ingest)
 
     def shutdown():
-        print("\nFinalizing logs...")
+        print("\n[Harmony] Finalizing logs...")
         if logger.buffer:
             logger.flush_buffer()
-        print("Done. Exiting.")
+        print("[Harmony] System offline.")
         app.quit()
 
     signal.signal(signal.SIGINT, lambda *args: shutdown())
@@ -24,8 +24,11 @@ def main():
     timer.start(500) 
     timer.timeout.connect(lambda: None) 
 
-    print("🚀 Harmony System Active (Manual Write Mode).")
-    print("Commands: 'Shema Write' to sync text, 'Shema Shutdown' to exit.")
+    print("--------------------------------------------------")
+    print("🚀 Harmony System Active")
+    print(f"📂 Root Directory: {logger.root_dir}")
+    print(f"📄 DB Location: {logger.db_path}")
+    print("--------------------------------------------------")
     
     gui.show()
     sys.exit(app.exec())
