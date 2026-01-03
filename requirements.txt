@@ -1,0 +1,17 @@
+# --- Client (HUD) Requirements ---
+PyQt6==6.10.1          # Core GUI framework
+win10toast==0.9        # Windows notifications
+pygetwindow==0.0.9     # Window management for watchdog
+pywin32                # Required for direct clipboard HDROP access
+pyperclip              # General clipboard management
+requests               # Shipping files to server over Tailscale
+
+# --- Server (Muscular) Requirements ---
+fastapi==0.116.1       # The "Ear" listener
+uvicorn[standard]      # High-performance server runner
+python-multipart       # Required for FastAPI to receive file uploads
+openai-whisper         # The AI transcription model
+torch                  # Deep learning backend for Whisper
+torchvision            # Torch dependency
+torchaudio             # Torch dependency
+numpy<2                # CRITICAL: Prevents Whisper/Numba crash
