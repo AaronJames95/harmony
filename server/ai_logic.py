@@ -1,24 +1,33 @@
-import whisper, torch, gc, os, time
-from .notifier import deliver_transcript
+import whisper
+import torch
+import gc
+import os
+import time
+from .notifier import deliver_transcript # This is what triggered the error
 
 def run_transcription_pipeline(file_path, original_name):
     try:
-        # Load model only when the muscle is needed
+        print(f"🧠 Loading AI Model for: {original_name}")
         model = whisper.load_model("medium") 
         result = model.transcribe(file_path)
         
-        # Build Markdown with precise timestamps
-        md = f"# {original_name}\n\n"
-        for s in result['segments']:
-            ts = time.strftime('%H:%M:%S', time.gmtime(s['start']))
-            md += f"**[{ts}]** {s['text']}  \n"
+        # Format the text
+        md_output = f"# Transcript: {original_name}\n\n"
+        for segment in result['segments']:
+            start = time.strftime('%H:%M:%S', time.gmtime(segment['start']))
+            md_output += f"**[{start}]** {segment['text']}  \n"
 
-        deliver_transcript(md, original_name)
+        # Deliver the result via the notifier
+        deliver_transcript(md_output, original_name)
         
-        # --- PREVENT MEMORY LEAKS ---
+        # --- VRAM PURGE ---
         del model
-        torch.cuda.empty_cache() # Purge VRAM
-        gc.collect()             # Purge System RAM
-        
+        torch.cuda.empty_cache()
+        gc.collect()
+        print("🧹 VRAM Purged.")
+
+    except Exception as e:
+        print(f"❌ AI Pipeline Error: {e}")
     finally:
-        if os.path.exists(file_path): os.remove(file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
