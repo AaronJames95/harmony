@@ -13,7 +13,7 @@ if root_path not in sys.path:
 try:
     from common.constants import API_URL
 except ImportError:
-    API_URL = "http://your-server-ip:5000/transcribe"
+    API_URL = "http://your-server-ip:8000/transcribe"
 
 def get_and_clear_clipboard_files():
     paths = []
