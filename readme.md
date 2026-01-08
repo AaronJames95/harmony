@@ -29,3 +29,6 @@ You asked: Why sleep when I could just kill?
 * If you don't if you need to create a new environment then you can do that using Mamba and the environment yaml file provided in the server directory.
 * /home/aharon/miniforge3/envs/muscular_env/bin/python
 * start tailscale with `sudo tailscale web`
+* Note: Remote access requires sudo systemctl edit ollama.service with OLLAMA_HOST=0.0.0.0
+
+## Macros
