@@ -2,7 +2,7 @@ import os
 
 # Set your absolute Linux path here
 # Example: "/home/username/transcripts" or "/var/www/output"
-DESTINATION = "/home/aharon/Desktop/2_Roots/Second Brain/vault-alpha/2_Roots/Harmony/output/transcripts" 
+DESTINATION = "/home/aharon/Desktop/2_Roots/Second Brain/vault-alpha/0_Sunlight" 
 
 def deliver_transcript(markdown_text, original_filename):
     """
