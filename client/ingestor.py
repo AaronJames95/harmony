@@ -19,6 +19,9 @@ class Ingestor:
         self.buffer = ""
         self.timer = None
         
+        # UI Reference
+        self.gui = None 
+        
         # State Management
         self.is_capturing = False
         self.temp_buffer = []  # RAM buffer for high-speed capture
@@ -57,10 +60,8 @@ class Ingestor:
                 self.timer = threading.Timer(0.3, self.flush_buffer)
                 self.timer.start()
             else:
-                # FAST: Append to RAM instead of Disk
                 self.temp_buffer.append(new_chunk)
                 
-                # OPTIONAL: Backup to disk every 10s so it's not ONLY in RAM
                 if not self.save_timer:
                     self.save_timer = threading.Timer(10.0, self._periodic_backup)
                     self.save_timer.start()
@@ -71,7 +72,6 @@ class Ingestor:
             self.last_len = current_len
 
     def _periodic_backup(self):
-        """Saves RAM buffer to DB safety net without blocking the UI."""
         if self.is_capturing and self.temp_buffer:
             text_to_backup = "".join(self.temp_buffer)
             try:
@@ -79,7 +79,7 @@ class Ingestor:
                 conn.cursor().execute("INSERT INTO temp_capture (text_fragment) VALUES (?)", (text_to_backup,))
                 conn.commit()
                 conn.close()
-                self.temp_buffer = [] # Clear RAM once moved to Disk
+                self.temp_buffer = [] 
             except Exception as e:
                 print(f"❌ Backup failed: {e}")
         self.save_timer = None
@@ -107,12 +107,10 @@ class Ingestor:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Pull fragments from safety net + current RAM
             cursor.execute("SELECT text_fragment FROM temp_capture ORDER BY id ASC")
             db_fragments = [row[0] for row in cursor.fetchall()]
             full_thought = "".join(db_fragments) + "".join(self.temp_buffer)
             
-            # Clean up and copy
             final_text = full_thought.lower().replace("shema shabbat", "").strip()
             if final_text:
                 pyperclip.copy(final_text)
@@ -148,5 +146,6 @@ class Ingestor:
             if any(t in clean_text for t in cmd["triggers"]):
                 print(f"✨ HUD Action: {cmd['id']}")
                 self._log_command(cmd["id"], clean_text)
+                # Pass self (Ingestor) to the action so it can access self.gui
                 cmd["action"](self, clean_text) 
                 break

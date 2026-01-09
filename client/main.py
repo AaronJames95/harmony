@@ -7,8 +7,17 @@ from ingestor import Ingestor
 
 def main():
     app = QApplication(sys.argv)
+    
+    # 1. Initialize GUI
     gui = OverlayWindow()
+    
+    # 2. Initialize Ingestor
     logger = Ingestor()
+    
+    # 3. LINKING: Give logger access to GUI for notifications
+    logger.gui = gui 
+
+    # Connect transcription signal to database/logic
     gui.text_received.connect(logger.ingest)
 
     def shutdown():
