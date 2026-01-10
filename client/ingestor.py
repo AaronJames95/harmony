@@ -13,6 +13,10 @@ class Ingestor:
         self.log_dir = os.path.join(self.root_dir, "logs")
         if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
         
+        # --- USER CONFIG: OBSIDIAN PATH ---
+        self.obsidian_qc_path = r"C:\Users\AColl\OneDrive\One Drive before 11_16_2023\Documents\vault-alpha\💡 Quick Capture.md" 
+        # ----------------------------------
+
         self.db_path = os.path.join(self.log_dir, "harmony_main.db")
         self.session_id = int(time.time())
         self.last_len = 0
@@ -24,8 +28,8 @@ class Ingestor:
         
         # State Management
         self.is_capturing = False
-        self.temp_buffer = []  # RAM buffer for high-speed capture
-        self.save_timer = None # Timer for safety-net backups
+        self.temp_buffer = [] 
+        self.save_timer = None
         self._init_db()
 
     def _init_db(self):
@@ -61,12 +65,9 @@ class Ingestor:
                 self.timer.start()
             else:
                 self.temp_buffer.append(new_chunk)
-                
                 if not self.save_timer:
                     self.save_timer = threading.Timer(10.0, self._periodic_backup)
                     self.save_timer.start()
-                
-                # Check for exit phrase inside the stream
                 if "shabbat" in new_chunk.lower():
                     self.stop_deep_state()
         elif current_len < self.last_len:
@@ -85,28 +86,63 @@ class Ingestor:
                 print(f"❌ Backup failed: {e}")
         self.save_timer = None
 
+    def save_quick_note(self, raw_text, source="voice"):
+        """
+        Parses text and appends it to the bottom of the Obsidian file.
+        source: 'voice' (needs parsing) or 'clipboard' (saves as-is).
+        """
+        if not raw_text: return
+
+        # 1. Clean/Parse the content based on source
+        final_content = raw_text.strip()
+        
+        if source == "voice":
+            # Strip the trigger phrases to get the actual content
+            lower_text = raw_text.lower()
+            if "note" in lower_text:
+                final_content = raw_text.split("note", 1)[1].strip()
+            elif "capture" in lower_text:
+                final_content = raw_text.split("capture", 1)[1].strip()
+        
+        if not final_content:
+            print("⚠️ No content found after trigger phrase.")
+            return
+
+        # 2. Add Timestamp
+        timestamp = datetime.now().strftime('%H:%M')
+        # Ensure we start on a new line
+        bullet_line = f"\n- [{timestamp}] {final_content}"
+
+        # 3. Append to File (Bottom Only)
+        try:
+            if not os.path.exists(self.obsidian_qc_path):
+                print(f"❌ File not found: {self.obsidian_qc_path}")
+                if self.gui: self.gui.add_message("SYSTEM", f"❌ Error: QC File not found.")
+                return
+
+            with open(self.obsidian_qc_path, "a", encoding="utf-8") as f:
+                f.write(bullet_line)
+
+            print(f"📝 Quick Capture ({source}): {final_content[:30]}...")
+            
+            if self.gui:
+                self.gui.update_notification("CAPTURED", "cyan")
+                self.gui.add_message("SYSTEM", f"📝 <b>Saved to Obsidian:</b><br>\"{final_content}\"")
+
+        except Exception as e:
+            print(f"❌ File Write Error: {e}")
+            if self.gui: self.gui.add_message("SYSTEM", f"❌ Write Error: {e}")
+
     def start_deep_state(self, text=None):
-        """
-        Triggered by 'Shama shama'.
-        Begins capturing text to memory/DB.
-        """
         if self.is_capturing: return
         print("🌑 Deep State Active: Optimized RAM Capture.")
-        
-        # --- UI UPDATE ---
         if self.gui:
-            # We use the thread-safe signal emitters defined in OverlayWindow
             try:
-                self.gui.update_notification("REC: DEEP STATE", "#ffab40") # Orange status
+                self.gui.update_notification("REC: DEEP STATE", "#ffab40")
                 self.gui.add_message("SYSTEM", "🔴 <b>Dictation Started</b><br>Buffer cleared. Listening...")
-            except Exception as e:
-                print(f"UI Error: {e}")
-        # -----------------
-
+            except Exception as e: print(f"UI Error: {e}")
         self.is_capturing = True
         self.temp_buffer = []
-        
-        # Clear old temp data
         try:
             conn = sqlite3.connect(self.db_path)
             conn.cursor().execute("DELETE FROM temp_capture")
@@ -115,10 +151,6 @@ class Ingestor:
         except: pass
 
     def stop_deep_state(self, text=None):
-        """
-        Triggered by 'Shema Shabbat'.
-        Consolidates captured text, copies to clipboard, and resets.
-        """
         if not self.is_capturing: return
         print("☀️ Shabbat: Consolidating to clipboard...")
         self.is_capturing = False
@@ -127,39 +159,28 @@ class Ingestor:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
-            # Retrieve any backed-up fragments + what's currently in RAM
             cursor.execute("SELECT text_fragment FROM temp_capture ORDER BY id ASC")
             db_fragments = [row[0] for row in cursor.fetchall()]
             full_thought = "".join(db_fragments) + "".join(self.temp_buffer)
-            
-            # Clean up the exit phrase from the final output
             final_text = full_thought.lower().replace("shema shabbat", "").strip()
             
             if final_text:
                 pyperclip.copy(final_text)
                 print(f"📋 Copied {len(final_text)} characters.")
-                
-                # --- UI UPDATE ---
                 if self.gui:
                     try:
                         self.gui.update_notification("Standby", "white")
                         self.gui.add_message("SYSTEM", f"📋 <b>Copied to Clipboard</b><br>Captured {len(final_text)} chars.")
-                    except Exception as e:
-                        print(f"UI Error: {e}")
-                # -----------------
+                    except Exception as e: print(f"UI Error: {e}")
             else:
-                if self.gui:
-                    self.gui.add_message("SYSTEM", "⚠️ Dictation ended, but buffer was empty.")
+                if self.gui: self.gui.add_message("SYSTEM", "⚠️ Dictation ended, but buffer was empty.")
             
             cursor.execute("DELETE FROM temp_capture")
             conn.commit()
             conn.close()
         except Exception as e:
             print(f"❌ Shabbat Error: {e}")
-            if self.gui:
-                self.gui.add_message("SYSTEM", f"❌ Error saving dictation: {e}")
-        
+            if self.gui: self.gui.add_message("SYSTEM", f"❌ Error saving dictation: {e}")
         self.temp_buffer = []
 
     def flush_buffer(self):
@@ -177,34 +198,22 @@ class Ingestor:
 
     def process_commands(self, text):
         clean_text = text.lower()
-        
-        # --- PRIORITY CHECK: DEEP STATE ---
         if "shama shama" in clean_text:
             self._log_command("START_DEEP_STATE", clean_text)
             self.start_deep_state(clean_text)
             return
-        # ----------------------------------
 
-        # Aliases that must be present to trigger a command scan
         trigger_aliases = ["shema", "shima", "shimah", "shemah", "shaman", "shemale", "shama", "shuv"]
-        
         if not any(alias in clean_text for alias in trigger_aliases): return
 
         for cmd in COMMANDS:
             if any(t in clean_text for t in cmd["triggers"]):
                 print(f"✨ HUD Action: {cmd['id']}")
                 self._log_command(cmd["id"], clean_text)
-                
-                # --- FIX: FORCE EXIT FOR SHUTDOWN ---
-                # This intercepts the shutdown command and kills the process 
-                # immediately, bypassing the PyQt thread crash.
                 if cmd["id"] == "SYSTEM_SHUTDOWN":
                     print("🛑 FORCE EXIT TRIGGERED via OS call")
-                    # Optional: small sleep to let logs flush
                     time.sleep(0.1) 
                     os._exit(0)
-                # -----------------------------------
-                
                 try:
                     cmd["action"](self, clean_text)
                 except Exception as e:
