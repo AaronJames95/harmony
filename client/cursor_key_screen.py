@@ -44,7 +44,7 @@ class DictationWatchdog:
     def notify_user(self):
         winsound.Beep(1000, 300)
 
-# --- THE STABLE GUI ---
+# --- THE STYLED GUI ---
 class OverlayWindow(QMainWindow):
     text_received = pyqtSignal(str)
     sig_toggle = pyqtSignal(str)
@@ -68,27 +68,24 @@ class OverlayWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
         
-        # 1. STRUCTURAL FIX: Align everything to the TOP
+        # Align Top to prevent drifting
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0) 
 
         # --- INIT COMPONENTS ---
-        # 1. Command Bar (Anchor)
         self.init_command_bar()
         
-        # 2. Spacer (Gap)
+        # 1. SPACER: Keeps window "High" (100px gap)
         self.spacer = QFrame()
-        self.spacer.setFixedHeight(250) 
+        self.spacer.setFixedHeight(100) 
         self.spacer.setStyleSheet("background: transparent;")
         self.spacer.hide()
         self.main_layout.addWidget(self.spacer)
         
-        # 3. Panels
         self.init_conversation_panel()
         self.init_shalom_panel()
 
-        # Initial positioning (Compact)
         self.move_to_top_center(expanded=False)
 
     def init_command_bar(self):
@@ -96,7 +93,7 @@ class OverlayWindow(QMainWindow):
         self.command_frame.setFixedHeight(34)
         self.command_frame.setStyleSheet("""
             QFrame {
-                background-color: rgba(10, 30, 60, 255);
+                background-color: rgba(10, 30, 60, 100);
                 border-top: none;
                 border-left: 1px solid rgba(255, 255, 255, 100);
                 border-right: 1px solid rgba(255, 255, 255, 100);
@@ -129,13 +126,13 @@ class OverlayWindow(QMainWindow):
     def init_conversation_panel(self):
         self.conversation_display = QTextEdit()
         self.conversation_display.setReadOnly(True)
-        self.conversation_display.setMinimumHeight(300) 
+        self.conversation_display.setMinimumHeight(400) 
         self.conversation_display.setStyleSheet("""
             QTextEdit {
-                background-color: rgba(10, 30, 60, 230);
+                background-color: rgba(10, 30, 60, 100);
                 border: 1px solid rgba(255, 255, 255, 150);
-                border-radius: 8px; padding: 20px; color: white;
-                font-family: 'Segoe UI'; font-size: 14px; line-height: 20px;
+                border-radius: 8px; padding: 10px; color: white;
+                font-family: 'Segoe UI'; font-size: 14px;
             }
         """)
         self.conversation_display.hide()
@@ -177,17 +174,15 @@ class OverlayWindow(QMainWindow):
 
     # ---------- LOGIC SLOTS ----------
     def move_to_top_center(self, expanded=False):
-        """Calculates and applies the geometry."""
         screen_geo = QApplication.primaryScreen().geometry()
         target_width = 650
         
         x_pos = screen_geo.x() + (screen_geo.width() - target_width) // 2
-        y_pos = screen_geo.top() - 10 # Always flush top
+        y_pos = screen_geo.top() - 10 
         
-        # Explicit heights
-        target_height = 600 if expanded else 38
+        # 34(Bar) + 100(Spacer) + 400(Panel) = ~550
+        target_height = 550 if expanded else 38
         
-        # 2. Apply Geometry
         self.resize(target_width, target_height)
         self.move(x_pos, y_pos)
 
@@ -196,25 +191,64 @@ class OverlayWindow(QMainWindow):
         other_widget = self.shalom_frame if panel_name == "conversation" else self.conversation_display
         
         if target_widget.isVisible():
-            # CLOSING SEQUENCE
             target_widget.hide()
             self.spacer.hide()
-            # 3. Use a Timer to FORCE the position back to top after the resize happens
-            # This corrects the "falling" behavior.
             QTimer.singleShot(10, lambda: self.move_to_top_center(expanded=False))
         else:
-            # OPENING SEQUENCE
             other_widget.hide()
-            # Resize first to make room
             self.move_to_top_center(expanded=True)
             self.spacer.show()
             target_widget.show()
 
     def _slot_add_message(self, sender, text):
-        prefix_color = "white" if sender == "SYSTEM" else "#cfd8dc"
         timestamp = time.strftime("%H:%M")
-        message_html = f"<div style='margin-bottom: 8px;'><b style='color:{prefix_color};'>[{timestamp}] {sender}:</b> {text}</div>"
-        self.conversation_display.append(message_html)
+        
+        # NAME CHANGE LOGIC
+        display_name = sender
+        if sender == "SYSTEM":
+            display_name = "HARMONY🎵"
+        
+        # Determine Styles based on Sender
+        if sender == "SYSTEM":
+            # Harmony: Left Align, Dark Blue/Grey Bubble
+            align = "left"
+            bg_color = "rgba(255, 255, 255, 20)" 
+            text_color = "#ffffff"
+            meta_color = "#b0bec5"
+            border = "1px solid rgba(255,255,255,50)"
+        else:
+            # User: Right Align, Cyan Glass Bubble
+            align = "right"
+            bg_color = "rgba(0, 200, 255, 40)" 
+            text_color = "#ffffff"
+            meta_color = "#e0f7fa"
+            border = "1px solid rgba(0, 255, 255, 100)"
+
+        # HTML Table Construction for Speech Bubbles
+        html = f"""
+        <table width="100%" border="0" cellpadding="2">
+            <tr>
+                <td align="{align}">
+                    <div style="
+                        background-color: {bg_color}; 
+                        border: {border};
+                        border-radius: 10px; 
+                        padding: 8px 12px; 
+                        margin-bottom: 5px;
+                        display: inline-block;">
+                        <span style="font-size: 10px; color: {meta_color}; font-weight: bold;">
+                            {display_name} • {timestamp}
+                        </span><br>
+                        <span style="font-size: 14px; color: {text_color};">
+                            {text}
+                        </span>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        """
+        
+        self.conversation_display.append(html)
         self.conversation_display.verticalScrollBar().setValue(
             self.conversation_display.verticalScrollBar().maximum()
         )
