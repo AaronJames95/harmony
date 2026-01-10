@@ -41,7 +41,7 @@ class ContentPanel(QWidget):
 
         def create_column(title, data_points):
             col_frame = QFrame()
-            # UPDATED: 70% Opacity (180 alpha) & Solid White Border
+            # 70% Opacity (180 alpha) & Solid White Border
             col_frame.setStyleSheet("""
                 QFrame {
                     background-color: rgba(10, 30, 60, 180);
@@ -68,7 +68,6 @@ class ContentPanel(QWidget):
 
     def _apply_styles(self):
         """Update border radius to make it look attached to the screen edge."""
-        # UPDATED: 70% Opacity (180 alpha)
         base_style = """
             background-color: rgba(10, 30, 60, 180);
             padding: 10px; color: white;
@@ -76,7 +75,6 @@ class ContentPanel(QWidget):
         """
         
         # Logic: If docked to a side, flatten that side
-        # UPDATED: Borders are now '1px solid white'
         if self.alignment_mode == "left":
             specifics = """
                 border: 1px solid white;
@@ -156,7 +154,7 @@ class ContentPanel(QWidget):
 class OverlayWindow(QMainWindow):
     text_received = pyqtSignal(str)
     
-    # Internal Signals to talk to Panel
+    # --- SIGNALS (The Thread-Safe Bridge) ---
     sig_toggle = pyqtSignal(str)
     sig_message = pyqtSignal(str, str)
     sig_notify = pyqtSignal(str, str)
@@ -168,9 +166,12 @@ class OverlayWindow(QMainWindow):
         # --- DUAL WINDOW SETUP ---
         self.panel = ContentPanel() # The satellite
         
-        # Connect Signals
+        # --- CONNECT SIGNALS TO SLOTS ---
+        # This ensures the code runs on the MAIN thread, even if called from a background thread
         self.sig_toggle.connect(self.panel.show_content)
         self.sig_align.connect(self._slot_set_alignment)
+        self.sig_message.connect(self._slot_add_message)          # <--- FIXED
+        self.sig_notify.connect(self._slot_update_notification)   # <--- FIXED
         
         # Window Setup
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
@@ -227,15 +228,14 @@ class OverlayWindow(QMainWindow):
         self.resize(650, 40) 
         self.move(x_pos, y_pos)
 
-    # --- SLOTS ---
+    # --- SLOTS (These run on the Main Thread) ---
     def _slot_set_alignment(self, mode):
         self.panel.alignment_mode = mode.lower()
-        self.update_notification(f"ALIGN: {mode.upper()}", "cyan")
-        
+        self._slot_update_notification(f"ALIGN: {mode.upper()}", "cyan")
         if self.panel.isVisible():
             self.panel.update_position()
 
-    def add_message(self, sender, text):
+    def _slot_add_message(self, sender, text):
         timestamp = time.strftime("%H:%M")
         display_name = "HARMONY🎵" if sender == "SYSTEM" else sender
         
@@ -279,7 +279,7 @@ class OverlayWindow(QMainWindow):
         if not self.panel.isVisible():
             self.panel.show_content("conversation")
 
-    def update_notification(self, text, color_code="white"):
+    def _slot_update_notification(self, text, color_code="white"):
         color_map = {
             "#69f0ae": "lime", "#81d4fa": "cyan", 
             "#ffab40": "orange", "#ffd740": "yellow", "#b3e5fc": "cyan"
@@ -290,9 +290,15 @@ class OverlayWindow(QMainWindow):
         self.status_dot.setStyleSheet(f"color: {final_color}; font-size: 10px; margin-top: 2px;")
         self.input_line.setPlaceholderText(f"STATUS: {text}...")
 
-    # --- PUBLIC API ---
+    # --- PUBLIC API (Callable from Background Threads) ---
     def toggle_panel(self, panel_name):
         self.sig_toggle.emit(panel_name)
     
     def set_alignment(self, mode):
         self.sig_align.emit(mode)
+
+    def add_message(self, sender, text):
+        self.sig_message.emit(sender, text) # <--- Safe for threading
+
+    def update_notification(self, text, color="white"):
+        self.sig_notify.emit(text, color)   # <--- Safe for threading
