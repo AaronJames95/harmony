@@ -36,13 +36,13 @@ COMMANDS = [
     {
         "id": "HUD_ALIGN_LEFT",
         "description": "Moves conversation panel to the left.",
-        "triggers": ["shema left", "move left", "align left"],
+        "triggers": ["shema left", "move left", "align left", "port"],
         "action": lambda ing, *args: ing.gui.set_alignment("left")
     },
     {
         "id": "HUD_ALIGN_RIGHT",
         "description": "Moves conversation panel to the right.",
-        "triggers": ["shema right", "move right", "align right"],
+        "triggers": ["shema right", "move right", "align right", "starboard"],
         "action": lambda ing, *args: ing.gui.set_alignment("right")
     },
     {
