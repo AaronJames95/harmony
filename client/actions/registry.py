@@ -1,71 +1,91 @@
 import webbrowser
 import os
 import pyperclip
-from actions import media_pipeline, writer
-
-# COMMAND REGISTRY
-# id: Unique identifier for the command_logs table
-# description: Human-readable explanation for documentation/help menus
-# triggers: Phonetic variations; index 0 is used as the 'Primary Trigger'
-# action: Uses *args to catch optional flags (like "clipboard") without breaking
+from PyQt6.QtCore import QTimer
+import threading
+from datetime import datetime
 
 COMMANDS = [
     {
         "id": "HELP_MENU",
-        "description": "Lists all available commands and their descriptions.",
+        "description": "Lists all available commands.",
         "triggers": ["help", "commands", "what can you do"],
         "action": lambda ing, *args: (
-            print("\n" + "="*85),
-            print(f"{'ID':<18} | {'TRIGGER':<15} | {'DESCRIPTION'}"),
-            print("="*85),
-            [print(f"🔹 {cmd['id']:<15} | {cmd['triggers'][0]:<15} | {cmd['description']}") for cmd in COMMANDS],
-            print("="*85 + "\n")
+            ing.gui.update_notification("HELP MENU OPENED", "cyan"),
+            ing.gui.add_message("SYSTEM", 
+                "<b>Available Commands:</b><br>" + 
+                "<br>".join([f"• <b>{cmd['id']}</b>: {cmd.get('description', 'No description.')}" for cmd in COMMANDS])
+            )
+        )
+    },
+    {
+        "id": "TOGGLE_CONVO",
+        "description": "Toggles the conversation history.",
+        "triggers": ["shema conversation", "shema logs", "open logs"],
+        "action": lambda ing, *args: ing.gui.toggle_panel("conversation")
+    },
+    {
+        "id": "TOGGLE_SHALOM",
+        "description": "Toggles the wellness dashboard.",
+        "triggers": ["shema shalom", "check status", "shema aretz"],
+        "action": lambda ing, *args: (
+            ing.gui.toggle_panel("shalom"),
+            ing.gui.update_notification("SHALOM CHECK", "orange")
         )
     },
     {
         "id": "HELLO_WORLD",
-        "description": "A sanity check to verify the Harmony trigger system is active.",
+        "description": "Verify system is active.",
         "triggers": ["hello", "testing"],
-        "action": lambda ing, *args: print("👋🏾 Harmony is online and listening!")
-    },
-    {
-        "id": "START_DEEP_STATE",
-        "description": "Activates continuous recording mode (No 0.3s silence flush).",
-        "triggers": ["shema shema", "deep state", "start recording"],
-        "action": lambda ing, *args: ing.start_capture()
-    },
-    {
-        "id": "STOP_DEEP_STATE",
-        "description": "Exits continuous mode and flushes the buffer to your clipboard.",
-        "triggers": ["shema shabbat", "stop recording", "shabbat"],
-        "action": lambda ing, *args: ing.stop_capture()
-    },
-    {
-        "id": "OPEN_GEMINI",
-        "description": "Opens Gemini. Use 'clipboard' flag to include copied text.",
-        "triggers": ["gemini", "jimini", "germany"],
         "action": lambda ing, *args: (
-            webbrowser.open(f"https://gemini.google.com/app?q={pyperclip.paste()}") 
-            if args and "clipboard" in args[0].lower() else 
-            webbrowser.open("https://gemini.google.com/app")
+            ing.gui.add_message("SYSTEM", "👋🏾 Harmony is online."),
+            ing.gui.update_notification("READY", "lime")
         )
     },
     {
-        "id": "EXPORT_LOGS",
-        "description": "Generates a human-readable audit of speech and actions.",
-        "triggers": ["log", "write", "writer"],
-        "action": lambda ing, *args: writer.export_history_to_text(ing)
+        "id": "START_DEEP_STATE",
+        "description": "Activates continuous recording.",
+        "triggers": ["shema shema", "deep state", "start recording"],
+        "action": lambda ing, *args: (
+            ing.start_deep_state()
+        )
     },
     {
-        "id": "MEDIA_PROCESS",
-        "description": "Extracts audio from video or processes audio files in clipboard.",
-        "triggers": ["process", "transcription"],
-        "action": lambda ing, *args: media_pipeline.run_pipeline(ing.db_path, ing.log_dir)
+        "id": "FLUSH_BUFFER",
+        "description": "Saves the current Deep State buffer.",
+        "triggers": ["amen", "flush", "save that"],
+        "action": lambda ing, *args: ing.flush_buffer()
+    },
+    {
+        # --- SMART QUICK NOTE ---
+        # Handles both Voice and Clipboard logic in one command
+        "id": "QUICK_NOTE",
+        "description": "Saves spoken text OR clipboard to Obsidian.",
+        "triggers": ["note", "capture"], 
+        "action": lambda ing, text: (
+            # If the user says "clipboard" anywhere in the command (e.g. "Note the clipboard")
+            # we switch source to 'clipboard' and grab content from pyperclip.
+            ing.save_quick_note(pyperclip.paste(), source="clipboard") 
+            if "clipboard" in text.lower() 
+            else ing.save_quick_note(text, source="voice")
+        )
+    },
+    {
+        "id": "WEB_SEARCH",
+        "description": "Opens Google/Gemini search.",
+        "triggers": ["search", "google", "look up"],
+        "action": lambda ing, *args: (
+            ing.gui.update_notification("WEB ACTION", "cyan"),
+            webbrowser.open(f"https://gemini.google.com/app?q={pyperclip.paste()}") 
+        )
     },
     {
         "id": "SYSTEM_SHUTDOWN",
-        "description": "Safely exits the Harmony application.",
-        "triggers": ["exit", "stop harmony", "shutdown"],
-        "action": lambda ing, *args: os._exit(0)
+        "description": "Safely exits Harmony.",
+        "triggers": ["exit", "stop system", "shutdown"],
+        "action": lambda ing, *args: (
+            ing.gui.add_message("SYSTEM", "Shutting down..."),
+            QTimer.singleShot(1000, lambda: os._exit(0))
+        )
     }
 ]
