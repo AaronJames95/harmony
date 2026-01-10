@@ -2,6 +2,10 @@ import sqlite3
 import time
 import os
 import threading
+import shutil
+import subprocess
+import requests
+import win32clipboard  # Requires: pip install pywin32
 import pyperclip
 from datetime import datetime
 from actions.registry import COMMANDS
@@ -13,9 +17,13 @@ class Ingestor:
         self.log_dir = os.path.join(self.root_dir, "logs")
         if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
         
-        # --- USER CONFIG: OBSIDIAN PATH ---
-        self.obsidian_qc_path = r"C:\Users\AColl\OneDrive\One Drive before 11_16_2023\Documents\vault-alpha\💡 Quick Capture.md" 
-        # ----------------------------------
+        # --- CONFIGURATION ---
+        # ⚠️ REPLACE with your actual server IP
+        self.server_url = "http://100.94.65.56:8000/transcribe"
+        self.large_file_threshold_mb = 25  # Convert videos larger than this
+        
+        self.obsidian_qc_path = r"C:\Users\AColl\Desktop\2_Areas\Harmony\QuickCapture.md" 
+        # ---------------------
 
         self.db_path = os.path.join(self.log_dir, "harmony_main.db")
         self.session_id = int(time.time())
@@ -52,6 +60,106 @@ class Ingestor:
         conn.commit()
         conn.close()
 
+    # --- MEDIA PIPELINE LOGIC (Restored from media_pipeline.py) ---
+    def get_clipboard_files(self):
+        """Extracts actual file paths from Windows Clipboard (CF_HDROP)."""
+        paths = []
+        try:
+            win32clipboard.OpenClipboard()
+            if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_HDROP):
+                data = win32clipboard.GetClipboardData(win32clipboard.CF_HDROP)
+                paths = list(data)
+                # We don't empty clipboard here immediately to allow user verify
+            win32clipboard.CloseClipboard()
+        except Exception as e:
+            print(f"❌ Clipboard Error: {e}")
+        return paths
+
+    def convert_to_audio(self, video_path):
+        """Uses FFmpeg to strip audio from large video files."""
+        output_audio = os.path.splitext(video_path)[0] + "_payload.mp3"
+        print(f"🎬 Extracting audio: {os.path.basename(video_path)}...")
+        
+        if self.gui:
+            self.gui.update_notification("CONVERTING...", "orange")
+            self.gui.add_message("SYSTEM", f"🎬 <b>Compressing Video</b><br>Extracting audio from {os.path.basename(video_path)}...")
+
+        cmd = ['ffmpeg', '-i', video_path, '-q:a', '0', '-map', 'a', output_audio, '-y']
+        
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, shell=True)
+            if os.path.exists(output_audio):
+                return output_audio
+        except Exception as e:
+            print(f"❌ FFmpeg Error: {e}")
+            if self.gui: self.gui.add_message("SYSTEM", f"❌ FFmpeg Error: {e}")
+        return None
+
+    def upload_file(self, file_path):
+        """Uploads a single file to the Harmony Server."""
+        filename = os.path.basename(file_path)
+        print(f"🚀 Shipping: {filename}...")
+        
+        if self.gui:
+            self.gui.update_notification("UPLOADING...", "cyan")
+            self.gui.add_message("SYSTEM", f"🚀 <b>Sending to Server</b><br>{filename}")
+
+        try:
+            with open(file_path, 'rb') as f:
+                response = requests.post(self.server_url, files={'file': f}, timeout=120)
+
+            if response.status_code == 200:
+                print(f"✅ Success! Job ID: {response.json().get('job_id')}")
+                if self.gui:
+                    self.gui.update_notification("SENT", "lime")
+                    self.gui.add_message("SYSTEM", f"✅ <b>Upload Complete</b><br>Server processing Job: {response.json().get('job_id')}")
+            else:
+                print(f"❌ Server Error: {response.status_code}")
+                if self.gui: self.gui.add_message("SYSTEM", f"❌ Upload Rejected: {response.status_code}")
+
+        except Exception as e:
+            print(f"❌ Connection Error: {e}")
+            if self.gui: self.gui.add_message("SYSTEM", f"❌ Connection Failed: {e}")
+
+    def run_media_pipeline(self):
+        """
+        The Master Function triggered by 'Shema process audio'.
+        Checks for files -> Converts if needed -> Uploads.
+        """
+        files = self.get_clipboard_files()
+        
+        if not files:
+            print("⚠️ No files found on clipboard.")
+            if self.gui: self.gui.add_message("SYSTEM", "⚠️ No files found on clipboard.")
+            return
+
+        for path in files:
+            if not os.path.exists(path): continue
+            
+            # Check size and type
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+            is_video = path.lower().endswith(('.mp4', '.mkv', '.mov', '.avi'))
+            
+            # 1. Convert Large Video
+            if is_video and size_mb > self.large_file_threshold_mb:
+                temp_audio = self.convert_to_audio(path)
+                if temp_audio:
+                    self.upload_file(temp_audio)
+                    try:
+                        os.remove(temp_audio) # Cleanup temp mp3
+                        print("🧹 Temp audio file cleaned up.")
+                    except: pass
+            
+            # 2. Upload Audio/Small Files Directly
+            else:
+                self.upload_file(path)
+
+        # Clear clipboard after processing to prevent duplicates?
+        # win32clipboard.OpenClipboard()
+        # win32clipboard.EmptyClipboard()
+        # win32clipboard.CloseClipboard()
+    # -------------------------------------------------------------
+
     def ingest(self, full_text):
         current_len = len(full_text)
         if current_len > self.last_len:
@@ -87,17 +195,10 @@ class Ingestor:
         self.save_timer = None
 
     def save_quick_note(self, raw_text, source="voice"):
-        """
-        Parses text and appends it to the bottom of the Obsidian file.
-        source: 'voice' (needs parsing) or 'clipboard' (saves as-is).
-        """
         if not raw_text: return
-
-        # 1. Clean/Parse the content based on source
         final_content = raw_text.strip()
         
         if source == "voice":
-            # Strip the trigger phrases to get the actual content
             lower_text = raw_text.lower()
             if "note" in lower_text:
                 final_content = raw_text.split("note", 1)[1].strip()
@@ -105,15 +206,11 @@ class Ingestor:
                 final_content = raw_text.split("capture", 1)[1].strip()
         
         if not final_content:
-            print("⚠️ No content found after trigger phrase.")
             return
 
-        # 2. Add Timestamp
         timestamp = datetime.now().strftime('%H:%M')
-        # Ensure we start on a new line
         bullet_line = f"\n- [{timestamp}] {final_content}"
 
-        # 3. Append to File (Bottom Only)
         try:
             if not os.path.exists(self.obsidian_qc_path):
                 print(f"❌ File not found: {self.obsidian_qc_path}")
@@ -124,7 +221,6 @@ class Ingestor:
                 f.write(bullet_line)
 
             print(f"📝 Quick Capture ({source}): {final_content[:30]}...")
-            
             if self.gui:
                 self.gui.update_notification("CAPTURED", "cyan")
                 self.gui.add_message("SYSTEM", f"📝 <b>Saved to Obsidian:</b><br>\"{final_content}\"")

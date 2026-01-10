@@ -34,6 +34,31 @@ COMMANDS = [
         )
     },
     {
+        "id": "HUD_ALIGN_LEFT",
+        "description": "Moves conversation panel to the left.",
+        "triggers": ["shema left", "move left", "align left"],
+        "action": lambda ing, *args: ing.gui.set_alignment("left")
+    },
+    {
+        "id": "HUD_ALIGN_RIGHT",
+        "description": "Moves conversation panel to the right.",
+        "triggers": ["shema right", "move right", "align right"],
+        "action": lambda ing, *args: ing.gui.set_alignment("right")
+    },
+    {
+        "id": "HUD_ALIGN_CENTER",
+        "description": "Moves conversation panel to the center.",
+        "triggers": ["shema center", "move center", "align center"],
+        "action": lambda ing, *args: ing.gui.set_alignment("center")
+    },
+    {
+        # --- THE RESTORED MEDIA PIPELINE ---
+        "id": "PROCESS_AUDIO",
+        "description": "Uploads clipboard files (Video/Audio) to Harmony Server.",
+        "triggers": ["process audio", "transcribe", "ingest file", "process media"],
+        "action": lambda ing, *args: ing.run_media_pipeline()
+    },
+    {
         "id": "HELLO_WORLD",
         "description": "Verify system is active.",
         "triggers": ["hello", "testing"],
@@ -57,14 +82,10 @@ COMMANDS = [
         "action": lambda ing, *args: ing.flush_buffer()
     },
     {
-        # --- SMART QUICK NOTE ---
-        # Handles both Voice and Clipboard logic in one command
         "id": "QUICK_NOTE",
         "description": "Saves spoken text OR clipboard to Obsidian.",
         "triggers": ["note", "capture"], 
         "action": lambda ing, text: (
-            # If the user says "clipboard" anywhere in the command (e.g. "Note the clipboard")
-            # we switch source to 'clipboard' and grab content from pyperclip.
             ing.save_quick_note(pyperclip.paste(), source="clipboard") 
             if "clipboard" in text.lower() 
             else ing.save_quick_note(text, source="voice")
