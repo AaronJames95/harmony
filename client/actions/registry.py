@@ -69,7 +69,7 @@ COMMANDS = [
     {
         "id": "QUICK_NOTE",
         "description": "Saves a quick note.",
-        "triggers": ["shaman note", "capture"],
+        "triggers": ["note", "capture"],
         "action": lambda ing, text: (
             ing.save_quick_note(text.split("note")[-1].strip()) if "note" in text else None,
             ing.gui.update_notification("NOTE SAVED", "cyan")
