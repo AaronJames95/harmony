@@ -66,8 +66,9 @@ class Ingestor:
                     self.save_timer = threading.Timer(10.0, self._periodic_backup)
                     self.save_timer.start()
                 
+                # Check for exit phrase inside the stream
                 if "shabbat" in new_chunk.lower():
-                    self.stop_capture()
+                    self.stop_deep_state()
         elif current_len < self.last_len:
             self.last_len = current_len
 
@@ -84,12 +85,24 @@ class Ingestor:
                 print(f"❌ Backup failed: {e}")
         self.save_timer = None
 
-    def start_capture(self):
+    def start_deep_state(self, text=None):
+        """
+        Triggered by 'Shama shama'.
+        Begins capturing text to memory/DB.
+        """
         if self.is_capturing: return
         print("🌑 Deep State Active: Optimized RAM Capture.")
+        
+        # --- UI UPDATE ---
+        if self.gui:
+            self.gui.update_notification("REC: DEEP STATE", "#ffab40") # Orange status
+            self.gui.add_message("SYSTEM", "🔴 <b>Dictation Started</b><br>Buffer cleared. Listening...")
+        # -----------------
+
         self.is_capturing = True
         self.temp_buffer = []
         
+        # Clear old temp data
         try:
             conn = sqlite3.connect(self.db_path)
             conn.cursor().execute("DELETE FROM temp_capture")
@@ -97,7 +110,11 @@ class Ingestor:
             conn.close()
         except: pass
 
-    def stop_capture(self):
+    def stop_deep_state(self, text=None):
+        """
+        Triggered by 'Shema Shabbat'.
+        Consolidates captured text, copies to clipboard, and resets.
+        """
         if not self.is_capturing: return
         print("☀️ Shabbat: Consolidating to clipboard...")
         self.is_capturing = False
@@ -107,20 +124,34 @@ class Ingestor:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Retrieve any backed-up fragments + what's currently in RAM
             cursor.execute("SELECT text_fragment FROM temp_capture ORDER BY id ASC")
             db_fragments = [row[0] for row in cursor.fetchall()]
             full_thought = "".join(db_fragments) + "".join(self.temp_buffer)
             
+            # Clean up the exit phrase from the final output
             final_text = full_thought.lower().replace("shema shabbat", "").strip()
+            
             if final_text:
                 pyperclip.copy(final_text)
                 print(f"📋 Copied {len(final_text)} characters.")
+                
+                # --- UI UPDATE ---
+                if self.gui:
+                    self.gui.update_notification("Standby", "white")
+                    self.gui.add_message("SYSTEM", f"📋 <b>Copied to Clipboard</b><br>Captured {len(final_text)} chars.")
+                # -----------------
+            else:
+                if self.gui:
+                    self.gui.add_message("SYSTEM", "⚠️ Dictation ended, but buffer was empty.")
             
             cursor.execute("DELETE FROM temp_capture")
             conn.commit()
             conn.close()
         except Exception as e:
             print(f"❌ Shabbat Error: {e}")
+            if self.gui:
+                self.gui.add_message("SYSTEM", f"❌ Error saving dictation: {e}")
         
         self.temp_buffer = []
 
@@ -139,7 +170,9 @@ class Ingestor:
 
     def process_commands(self, text):
         clean_text = text.lower()
+        # Aliases that must be present to trigger a command scan
         trigger_aliases = ["shema", "shima", "shimah", "shemah", "shaman", "shemale", "shama", "shuv"]
+        
         if not any(alias in clean_text for alias in trigger_aliases): return
 
         for cmd in COMMANDS:
@@ -147,5 +180,8 @@ class Ingestor:
                 print(f"✨ HUD Action: {cmd['id']}")
                 self._log_command(cmd["id"], clean_text)
                 # Pass self (Ingestor) to the action so it can access self.gui
-                cmd["action"](self, clean_text) 
+                try:
+                    cmd["action"](self, clean_text)
+                except Exception as e:
+                    print(f"❌ Command Execution Error: {e}")
                 break
