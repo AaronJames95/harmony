@@ -29,9 +29,18 @@ def main():
 
     signal.signal(signal.SIGINT, lambda *args: shutdown())
     
+    # Keep-alive timer for signal handling
     timer = QTimer()
     timer.start(500) 
     timer.timeout.connect(lambda: None) 
+
+    # --- STARTUP SEQUENCE ---
+    # Trigger a welcome message 1.5 seconds after the window appears
+    QTimer.singleShot(1500, lambda: (
+        gui.update_notification("SYSTEM READY", "lime"),
+        gui.add_message("SYSTEM", "👋🏾 <b>Harmony is Online</b><br>Systems nominal. Listening...")
+    ))
+    # ------------------------
 
     print("--------------------------------------------------")
     print("🚀 Harmony System Active")
