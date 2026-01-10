@@ -44,9 +44,8 @@ class DictationWatchdog:
     def notify_user(self):
         winsound.Beep(1000, 300)
 
-# --- THE ROBUST GUI ---
+# --- THE STABLE GUI ---
 class OverlayWindow(QMainWindow):
-    # Signals for Thread Safety
     text_received = pyqtSignal(str)
     sig_toggle = pyqtSignal(str)
     sig_message = pyqtSignal(str, str)
@@ -68,16 +67,19 @@ class OverlayWindow(QMainWindow):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
+        
+        # 1. STRUCTURAL FIX: Align everything to the TOP
+        self.main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0) 
 
         # --- INIT COMPONENTS ---
-        # 1. Command Bar (Always Visible)
+        # 1. Command Bar (Anchor)
         self.init_command_bar()
         
-        # 2. Spacer Widget (The "Floating Gap")
+        # 2. Spacer (Gap)
         self.spacer = QFrame()
-        self.spacer.setFixedHeight(250) # The distance between Bar and Panel
+        self.spacer.setFixedHeight(250) 
         self.spacer.setStyleSheet("background: transparent;")
         self.spacer.hide()
         self.main_layout.addWidget(self.spacer)
@@ -86,10 +88,9 @@ class OverlayWindow(QMainWindow):
         self.init_conversation_panel()
         self.init_shalom_panel()
 
-        # Initial positioning (Compact Mode)
+        # Initial positioning (Compact)
         self.move_to_top_center(expanded=False)
 
-    # ---------- COMPONENT DESIGN ----------
     def init_command_bar(self):
         self.command_frame = QFrame()
         self.command_frame.setFixedHeight(34)
@@ -176,35 +177,35 @@ class OverlayWindow(QMainWindow):
 
     # ---------- LOGIC SLOTS ----------
     def move_to_top_center(self, expanded=False):
-        """Forces geometry based on state."""
+        """Calculates and applies the geometry."""
         screen_geo = QApplication.primaryScreen().geometry()
         target_width = 650
         
-        # Center X
         x_pos = screen_geo.x() + (screen_geo.width() - target_width) // 2
-        # Flush Top Y
-        y_pos = screen_geo.top() - 10 
+        y_pos = screen_geo.top() - 10 # Always flush top
         
-        # MANUAL HEIGHT CONTROL (No adjustSize)
-        # 34 (Bar) + 4 (Buffer) = 38
-        # 34 (Bar) + 250 (Gap) + 300 (Panel) + Buffer = ~600
+        # Explicit heights
         target_height = 600 if expanded else 38
         
-        self.setGeometry(x_pos, y_pos, target_width, target_height)
+        # 2. Apply Geometry
+        self.resize(target_width, target_height)
+        self.move(x_pos, y_pos)
 
     def _slot_toggle_panel(self, panel_name):
         target_widget = self.conversation_display if panel_name == "conversation" else self.shalom_frame
         other_widget = self.shalom_frame if panel_name == "conversation" else self.conversation_display
         
-        # Logic: Determine if we are OPENING or CLOSING
         if target_widget.isVisible():
-            # CLOSING: Hide content -> Then Shrink
+            # CLOSING SEQUENCE
             target_widget.hide()
             self.spacer.hide()
-            self.move_to_top_center(expanded=False)
+            # 3. Use a Timer to FORCE the position back to top after the resize happens
+            # This corrects the "falling" behavior.
+            QTimer.singleShot(10, lambda: self.move_to_top_center(expanded=False))
         else:
-            # OPENING: Close other -> Resize (Grow) -> Then Show
+            # OPENING SEQUENCE
             other_widget.hide()
+            # Resize first to make room
             self.move_to_top_center(expanded=True)
             self.spacer.show()
             target_widget.show()
