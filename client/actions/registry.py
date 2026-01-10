@@ -103,7 +103,7 @@ COMMANDS = [
     {
         "id": "SYSTEM_SHUTDOWN",
         "description": "Safely exits Harmony.",
-        "triggers": ["exit", "stop system", "shutdown"],
+        "triggers": ["exit", "stop system", "shutdown", "shut down"],
         "action": lambda ing, *args: (
             ing.gui.add_message("SYSTEM", "Shutting down..."),
             QTimer.singleShot(1000, lambda: os._exit(0))

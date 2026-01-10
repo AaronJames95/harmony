@@ -13,37 +13,6 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtGui import QFont
 from win10toast import ToastNotifier
 
-# --- THE WATCHDOG (Standard) ---
-class DictationWatchdog:
-    def __init__(self, timeout=12):
-        self.timeout = timeout
-        self.last_activity = time.time()
-        self.is_monitoring = True
-        self.toaster = ToastNotifier()
-
-    def update_activity(self):
-        self.last_activity = time.time()
-
-    def check_if_dictation_running(self):
-        titles = ['Dictation', 'Voice typing', 'Voice access', 'Microsoft Text Input']
-        all_windows = gw.getAllTitles()
-        return any(any(t.lower() in w.lower() for t in titles) for w in all_windows)
-
-    def start(self):
-        threading.Thread(target=self._watch_loop, daemon=True).start()
-
-    def _watch_loop(self):
-        while self.is_monitoring:
-            if self.check_if_dictation_running():
-                elapsed = time.time() - self.last_activity
-                if elapsed > self.timeout:
-                    self.notify_user()
-                    self.last_activity = time.time()
-            time.sleep(1)
-
-    def notify_user(self):
-        winsound.Beep(1000, 300)
-
 # --- THE STYLED GUI ---
 class OverlayWindow(QMainWindow):
     text_received = pyqtSignal(str)
@@ -53,8 +22,6 @@ class OverlayWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.watchdog = DictationWatchdog(timeout=12)
-        self.watchdog.start()
 
         self.sig_toggle.connect(self._slot_toggle_panel)
         self.sig_message.connect(self._slot_add_message)

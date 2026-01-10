@@ -22,7 +22,7 @@ class Ingestor:
         self.server_url = "http://100.94.65.56:8000/transcribe"
         self.large_file_threshold_mb = 25  # Convert videos larger than this
         
-        self.obsidian_qc_path = r"C:\Users\AColl\Desktop\2_Areas\Harmony\QuickCapture.md" 
+        self.obsidian_qc_path = r"C:\Users\AColl\OneDrive\One Drive before 11_16_2023\Documents\vault-alpha\💡 Quick Capture.md" 
         # ---------------------
 
         self.db_path = os.path.join(self.log_dir, "harmony_main.db")
