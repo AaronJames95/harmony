@@ -95,8 +95,12 @@ class Ingestor:
         
         # --- UI UPDATE ---
         if self.gui:
-            self.gui.update_notification("REC: DEEP STATE", "#ffab40") # Orange status
-            self.gui.add_message("SYSTEM", "🔴 <b>Dictation Started</b><br>Buffer cleared. Listening...")
+            # We use the thread-safe signal emitters defined in OverlayWindow
+            try:
+                self.gui.update_notification("REC: DEEP STATE", "#ffab40") # Orange status
+                self.gui.add_message("SYSTEM", "🔴 <b>Dictation Started</b><br>Buffer cleared. Listening...")
+            except Exception as e:
+                print(f"UI Error: {e}")
         # -----------------
 
         self.is_capturing = True
@@ -138,8 +142,11 @@ class Ingestor:
                 
                 # --- UI UPDATE ---
                 if self.gui:
-                    self.gui.update_notification("Standby", "white")
-                    self.gui.add_message("SYSTEM", f"📋 <b>Copied to Clipboard</b><br>Captured {len(final_text)} chars.")
+                    try:
+                        self.gui.update_notification("Standby", "white")
+                        self.gui.add_message("SYSTEM", f"📋 <b>Copied to Clipboard</b><br>Captured {len(final_text)} chars.")
+                    except Exception as e:
+                        print(f"UI Error: {e}")
                 # -----------------
             else:
                 if self.gui:
@@ -170,6 +177,14 @@ class Ingestor:
 
     def process_commands(self, text):
         clean_text = text.lower()
+        
+        # --- PRIORITY CHECK: DEEP STATE ---
+        if "shama shama" in clean_text:
+            self._log_command("START_DEEP_STATE", clean_text)
+            self.start_deep_state(clean_text)
+            return
+        # ----------------------------------
+
         # Aliases that must be present to trigger a command scan
         trigger_aliases = ["shema", "shima", "shimah", "shemah", "shaman", "shemale", "shama", "shuv"]
         
@@ -179,7 +194,17 @@ class Ingestor:
             if any(t in clean_text for t in cmd["triggers"]):
                 print(f"✨ HUD Action: {cmd['id']}")
                 self._log_command(cmd["id"], clean_text)
-                # Pass self (Ingestor) to the action so it can access self.gui
+                
+                # --- FIX: FORCE EXIT FOR SHUTDOWN ---
+                # This intercepts the shutdown command and kills the process 
+                # immediately, bypassing the PyQt thread crash.
+                if cmd["id"] == "SYSTEM_SHUTDOWN":
+                    print("🛑 FORCE EXIT TRIGGERED via OS call")
+                    # Optional: small sleep to let logs flush
+                    time.sleep(0.1) 
+                    os._exit(0)
+                # -----------------------------------
+                
                 try:
                     cmd["action"](self, clean_text)
                 except Exception as e:
