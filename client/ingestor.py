@@ -66,7 +66,7 @@ class Ingestor:
                     self.save_timer = threading.Timer(10.0, self._periodic_backup)
                     self.save_timer.start()
                 
-                # Check for exit phrase inside the stream
+                # Check for exit phrase inside the streams
                 if "shabbat" in new_chunk.lower():
                     self.stop_deep_state()
         elif current_len < self.last_len:
