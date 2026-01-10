@@ -61,6 +61,8 @@ class Ingestor:
         conn.close()
 
     # --- MEDIA PIPELINE LOGIC (Restored from media_pipeline.py) ---
+    # In client/ingestor.py
+
     def get_clipboard_files(self):
         """Extracts actual file paths from Windows Clipboard (CF_HDROP)."""
         paths = []
@@ -69,7 +71,12 @@ class Ingestor:
             if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_HDROP):
                 data = win32clipboard.GetClipboardData(win32clipboard.CF_HDROP)
                 paths = list(data)
-                # We don't empty clipboard here immediately to allow user verify
+                
+                # --- THE FIX: CONSUME THE CLIPBOARD ---
+                # We empty it so subsequent triggers find nothing.
+                win32clipboard.EmptyClipboard() 
+                # --------------------------------------
+
             win32clipboard.CloseClipboard()
         except Exception as e:
             print(f"❌ Clipboard Error: {e}")
