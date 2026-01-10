@@ -5,12 +5,15 @@ import winsound
 import time
 import pygetwindow as gw
 import random
-from PyQt6.QtWidgets import QMainWindow, QTextEdit, QVBoxLayout, QWidget, QLabel, QScrollArea
+from PyQt6.QtWidgets import (
+    QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout, QWidget, 
+    QLabel, QFrame, QApplication, QLineEdit
+)
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtGui import QFont
 from win10toast import ToastNotifier
 
-# --- THE WATCHDOG (Internal Logic) ---
+# --- THE WATCHDOG ---
 class DictationWatchdog:
     def __init__(self, timeout=12):
         self.timeout = timeout
@@ -40,7 +43,6 @@ class DictationWatchdog:
 
     def notify_user(self):
         winsound.Beep(1000, 300)
-        self.toaster.show_toast("Harmony 2026", "Silence detected.", duration=2, threaded=True)
 
 # --- THE GUI ---
 class OverlayWindow(QMainWindow):
@@ -51,82 +53,164 @@ class OverlayWindow(QMainWindow):
         self.watchdog = DictationWatchdog(timeout=12)
         self.watchdog.start()
 
-        # Window Config
+        # Window Setup
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.drag_pos = QPoint()
 
-        # Layout Container
+        # Main Container Widget
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        self.layout = QVBoxLayout(self.central_widget)
+        self.main_layout = QVBoxLayout(self.central_widget)
+        # CRITICAL: Zero margins to hit the screen edge
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        # --- INIT COMPONENTS ---
+        self.init_command_bar()
+        self.init_conversation_panel()
+        self.init_shalom_panel()
+
+        # Initial positioning
+        self.move_to_top_center()
         
-        # 1. NOTIFICATION BAR
-        self.notif_label = QLabel("SYSTEM ACTIVE")
-        self.notif_label.setStyleSheet("""
-            background-color: rgba(30, 30, 30, 230); color: #ffab40;
-            border: 1px solid #ffab40; border-radius: 4px; padding: 4px;
-            font-size: 10px; font-family: 'Consolas';
+        # Adjust size after a split second to ensure layout is calculated
+        QTimer.singleShot(10, self.adjustSize)
+
+    # ---------- INITIALIZATION HELPERS ----------
+    def init_command_bar(self):
+        """The persistent top input bar."""
+        self.command_frame = QFrame()
+        self.command_frame.setFixedHeight(32) 
+        # Using Named Colors and RGBA only - NO HASH SYMBOLS
+        self.command_frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(10, 30, 60, 100);
+                border: 1px solid rgba(255, 255, 255, 200);
+                border-top: none;
+                border-bottom-left-radius: 15px;
+                border-bottom-right-radius: 15px;
+                border-top-left-radius: 0px;
+                border-top-right-radius: 0px;
+            }
         """)
-        self.notif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.notif_label)
+        
+        bar_layout = QHBoxLayout(self.command_frame)
+        bar_layout.setContentsMargins(15, 0, 15, 0)
+        bar_layout.setSpacing(10)
 
-        # 2. RESPONSE DISPLAY (The "Gemini-style" chat screen)
-        self.response_display = QTextEdit()
-        self.response_display.setReadOnly(True)
-        self.response_display.setPlaceholderText("System logs and AI responses will appear here...")
-        self.response_display.setStyleSheet("""
-            background-color: rgba(15, 15, 15, 210); color: #e0e0e0;
-            border: 1px solid #444; border-top-left-radius: 8px; border-top-right-radius: 8px;
-            font-size: 14px; padding: 10px;
+        # Status Icon
+        self.status_dot = QLabel("●")
+        self.status_dot.setStyleSheet("color: white; font-size: 12px; margin-top: 2px;") 
+        bar_layout.addWidget(self.status_dot)
+
+        # The Input Field
+        self.input_line = QLineEdit()
+        self.input_line.setPlaceholderText("awaiting command...")
+        self.input_line.setStyleSheet("""
+            QLineEdit {
+                background: transparent;
+                border: none;
+                color: white;
+                font-family: Consolas;
+                font-size: 14px;
+                font-weight: bold;
+            }
         """)
-        self.layout.addWidget(self.response_display)
+        self.input_line.textChanged.connect(lambda text: self.text_received.emit(text))
+        bar_layout.addWidget(self.input_line)
+        
+        self.main_layout.addWidget(self.command_frame)
 
-        # 3. INPUT BOX (Transcription source)
-        self.input_box = QTextEdit()
-        self.input_box.setFixedHeight(60)
-        self.input_box.setPlaceholderText("Transcription goes here...")
-        self.input_box.setStyleSheet("""
-            background-color: rgba(30, 30, 30, 240); color: #81d4fa;
-            border: 2px solid #0091ea; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;
-            font-size: 16px; padding: 8px;
+    def init_conversation_panel(self):
+        """The scrollable history view."""
+        self.conversation_display = QTextEdit()
+        self.conversation_display.setReadOnly(True)
+        self.conversation_display.setMinimumHeight(250) 
+        self.conversation_display.setStyleSheet("""
+            QTextEdit {
+                background-color: rgba(10, 30, 60, 220);
+                border: 1px solid rgba(255, 255, 255, 100);
+                border-top: none;
+                border-bottom-left-radius: 10px;
+                border-bottom-right-radius: 10px;
+                padding: 15px;
+                color: white;
+                font-family: Segoe UI;
+                font-size: 13px;
+            }
         """)
-        self.input_box.textChanged.connect(self.on_text_changed)
-        self.layout.addWidget(self.input_box)
+        self.conversation_display.hide()
+        self.main_layout.addWidget(self.conversation_display)
 
-        self.setFixedSize(400, 500) # Taller window for the chat history
-        self.move(100, 100)
+    def init_shalom_panel(self):
+        """The 3-column wellness dashboard."""
+        self.shalom_frame = QFrame()
+        self.shalom_frame.setStyleSheet("background: transparent;")
+        self.shalom_frame.hide()
 
-    # --- FUNCTIONALITY ---
+        cols_layout = QHBoxLayout(self.shalom_frame)
+        cols_layout.setContentsMargins(5, 5, 5, 5) 
+        cols_layout.setSpacing(10)
+
+        def create_column(title, data_points):
+            col_frame = QFrame()
+            col_frame.setStyleSheet("""
+                QFrame {
+                    background-color: rgba(10, 30, 60, 220);
+                    border: 1px solid rgba(255, 255, 255, 150);
+                    border-radius: 10px;
+                    padding: 10px;
+                }
+            """)
+            v_layout = QVBoxLayout(col_frame)
+            title_lbl = QLabel(title.upper())
+            title_lbl.setStyleSheet("color: white; font-weight: bold; font-family: Consolas; font-size: 14px; margin-bottom: 5px;")
+            title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            v_layout.addWidget(title_lbl)
+            for dp in data_points:
+                lbl = QLabel("• " + dp)
+                lbl.setStyleSheet("color: lightgray; font-size: 12px; font-family: Segoe UI;")
+                v_layout.addWidget(lbl)
+            return col_frame
+
+        cols_layout.addWidget(create_column("Guf (Body)", ["HR: --", "Steps: --", "Sleep: --"]))
+        cols_layout.addWidget(create_column("Nefesh (Mind)", ["VRAM: Nominal", "Phone: Connected", "Tasks: 3 Pending"]))
+        cols_layout.addWidget(create_column("Ruach (Spirit)", ["Meditate: Not yet", "Journal: 1 Entry", "Focus Lvl: High"]))
+
+        self.main_layout.addWidget(self.shalom_frame)
+
+    # ---------- LOGIC & TOGGLING ----------
+    def move_to_top_center(self):
+        screen_geo = QApplication.primaryScreen().geometry()
+        target_width = 650
+        self.setFixedWidth(target_width)
+        
+        # Center X
+        x_pos = screen_geo.x() + (screen_geo.width() - target_width) // 2
+        
+        # NUCLEAR OPTION: Push up by 10 pixels to kill the Windows Shadow
+        y_pos = screen_geo.top() - 36
+        
+        print(f"DEBUG: Moving to Y={y_pos}") # Check your terminal to see if this runs!
+        self.move(x_pos, y_pos)
+
+    def toggle_panel(self, panel_name):
+        target_widget = self.conversation_display if panel_name == "conversation" else self.shalom_frame
+        other_widget = self.shalom_frame if panel_name == "conversation" else self.conversation_display
+        
+        if target_widget.isVisible():
+            target_widget.hide()
+        else:
+            other_widget.hide()
+            target_widget.show()
+        
+        QTimer.singleShot(10, lambda: (self.adjustSize(), self.move_to_top_center()))
+
     def add_message(self, sender, text):
-        """Adds a message to the response screen."""
-        color = "#81d4fa" if sender == "YOU" else "#ffab40"
+        prefix_color = "white" if sender == "SYSTEM" else "lightgray"
         timestamp = time.strftime("%H:%M")
-        message_html = f"<br><b style='color:{color};'>[{timestamp}] {sender}:</b> {text}"
-        self.response_display.append(message_html)
-        
-        # Auto-scroll to bottom
-        self.response_display.verticalScrollBar().setValue(
-            self.response_display.verticalScrollBar().maximum()
+        message_html = f"<div style='margin-bottom: 5px;'><b style='color:{prefix_color};'>[{timestamp}] {sender}:</b> {text}</div>"
+        self.conversation_display.append(message_html)
+        self.conversation_display.verticalScrollBar().setValue(
+            self.conversation_display.verticalScrollBar().maximum()
         )
-
-    def update_notification(self, message, color="#ffab40"):
-        self.notif_label.setText(message.upper())
-        self.notif_label.setStyleSheet(f"background-color: rgba(30,30,30,230); color: {color}; border: 1px solid {color}; padding:4px;")
-
-    def on_text_changed(self):
-        text = self.input_box.toPlainText()
-        if text:
-            self.text_received.emit(text)
-            self.watchdog.update_activity()
-
-    # --- DRAGGING ---
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self.drag_pos)
-            event.accept()
