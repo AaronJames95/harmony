@@ -15,9 +15,11 @@ COMMANDS = [
         "triggers": ["help", "commands", "what can you do"],
         "action": lambda ing, *args: (
             ing.gui.update_notification("HELP MENU OPENED", "cyan"),
-            ing.gui.add_message("SYSTEM", "<b>Available Commands:</b>"),
-            [ing.gui.add_message("SYSTEM", f"• {cmd['id']}: {cmd.get('description', 'No description.')}") for cmd in COMMANDS],
-            ing.gui.toggle_panel("conversation") # Auto-open panel
+            # UPDATED: Just adds the message. Does NOT force the panel open.
+            ing.gui.add_message("SYSTEM", 
+                "<b>Available Commands:</b><br>" + 
+                "<br>".join([f"• <b>{cmd['id']}</b>: {cmd.get('description', 'No description.')}" for cmd in COMMANDS])
+            )
         )
     },
     {
