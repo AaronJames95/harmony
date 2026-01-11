@@ -10,31 +10,27 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
 # ==========================================
-# 1. THE HUD PANEL (Bottom-Left, VRAM Stats)
+# 1. THE HUD PANEL (Bottom-Left)
 # ==========================================
 class HudPanel(QWidget):
-    # Signal to update UI from background thread safely
     sig_stats_update = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
         self.server_url = "http://100.94.65.56:8000" 
 
-        # Window Setup
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
-        # Connect Signal
+        # ⚡ FIX: Prevent this window from stealing focus when it appears
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
         self.sig_stats_update.connect(self._update_ui)
 
-        # Layout
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Build UI
         self.init_ui()
         
-        # Polling Timer
         self.timer = QTimer()
         self.timer.timeout.connect(self.poll_server)
 
@@ -92,6 +88,7 @@ class HudPanel(QWidget):
             self.timer.stop()
         else:
             self.update_position()
+            # ⚡ Use show() but the Attribute we set prevents activation
             self.show()
             self.poll_server()
             self.timer.start(2000)
@@ -99,7 +96,6 @@ class HudPanel(QWidget):
     def update_position(self):
         screen = QApplication.primaryScreen().geometry()
         width, height = 300, 120
-        # Bottom Left with padding
         x = screen.left() + 30
         y = screen.bottom() - height - 80 
         self.setGeometry(x, y, width, height)
@@ -150,6 +146,9 @@ class ConversationPanel(QWidget):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
+        # ⚡ FIX: Prevent focus stealing here too
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         
@@ -167,7 +166,6 @@ class ConversationPanel(QWidget):
             border: 1px solid white;
             font-family: 'Segoe UI'; font-size: 14px;
         """
-        # Dynamic borders based on alignment
         if self.alignment_mode == "left":
             corners = "border-left: none; border-top-left-radius: 0px; border-bottom-left-radius: 0px; border-top-right-radius: 12px; border-bottom-right-radius: 12px;"
         elif self.alignment_mode == "right":
@@ -229,17 +227,14 @@ class OverlayWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # --- INSTANTIATE INDEPENDENT PANELS ---
         self.convo_panel = ConversationPanel()
         self.hud_panel = HudPanel()
         
-        # --- CONNECT SIGNALS ---
         self.sig_toggle.connect(self._handle_toggle)
         self.sig_align.connect(self._handle_align)
         self.sig_message.connect(self._handle_message)
         self.sig_notify.connect(self._handle_notify)
         
-        # Window Setup
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
@@ -287,7 +282,6 @@ class OverlayWindow(QMainWindow):
         self.resize(650, 40) 
         self.move(x, y)
 
-    # --- SLOT HANDLERS ---
     def _handle_toggle(self, panel_name):
         if panel_name == "conversation":
             self.convo_panel.toggle()
@@ -302,7 +296,6 @@ class OverlayWindow(QMainWindow):
         timestamp = time.strftime("%H:%M")
         display_name = "HARMONY🎵" if sender == "SYSTEM" else sender
         
-        # Style
         if sender == "SYSTEM":
             align = "left"
             bg = "rgba(255, 255, 255, 20)"
@@ -334,7 +327,6 @@ class OverlayWindow(QMainWindow):
         self.status_dot.setStyleSheet(f"color: {final_color}; font-size: 10px; margin-top: 2px;")
         self.input_line.setPlaceholderText(f"STATUS: {text}...")
 
-    # --- PUBLIC API ---
     def toggle_panel(self, panel_name): self.sig_toggle.emit(panel_name)
     def set_alignment(self, mode): self.sig_align.emit(mode)
     def add_message(self, sender, text): self.sig_message.emit(sender, text)
