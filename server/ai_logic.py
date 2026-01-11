@@ -23,12 +23,12 @@ Your Goal:
 """
 # ---------------------
 
-def purge_vram(model_obj=None):
-    if model_obj:
-        del model_obj
-    torch.cuda.empty_cache()
+def purge_vram():
+    """Forces PyTorch to release cached memory."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     gc.collect()
-    print("🧹 VRAM Purged (Whisper).")
+    print("🧹 VRAM Purged.")
 
 def call_ollama(prompt, unload=False):
     """
@@ -45,8 +45,6 @@ def call_ollama(prompt, unload=False):
                 "num_ctx": 4096
             }
         }
-        
-        # ⚡ KEY CHANGE: Control memory persistence
         if unload:
             payload["keep_alive"] = 0 
         
@@ -60,35 +58,29 @@ def call_ollama(prompt, unload=False):
 def summarize_with_ollama(full_text):
     print(f"🦙 Sending to Ollama ({OLLAMA_MODEL})...")
     
-    # 1. SHORT FILES (No Chunking)
     if len(full_text.split()) < 50:
-        # Unload immediately since we are done
         return call_ollama(f"Summarize this briefly:\n{full_text}", unload=True)
 
-    # 2. LONG FILES (Map-Reduce)
     chunk_size = 12000
     chunks = [full_text[i:i+chunk_size] for i in range(0, len(full_text), chunk_size)]
     
     if len(chunks) == 1:
-        # Fits in one go -> Unload immediately
         return call_ollama(f"{SYSTEM_PROMPT}\n\nTRANSCRIPT:\n{full_text}", unload=True)
     
-    # Process multiple chunks
     print(f"📄 Splitting into {len(chunks)} parts for analysis...")
     partial_summaries = []
     
     for i, chunk in enumerate(chunks):
         print(f"   ...Processing Part {i+1}/{len(chunks)}")
-        # Keep model loaded between chunks for speed (unload=False)
+        # Keep loaded for speed
         summary = call_ollama(f"Summarize this segment of a transcript:\n\n{chunk}", unload=False)
         if summary:
             partial_summaries.append(summary)
 
-    # Final consolidation
     print("🔗 Combining summaries...")
     master_summary = "\n".join(partial_summaries)
     
-    # ⚡ FINAL STEP: Unload immediately because the job is done
+    # Final cleanup: Unload immediately
     return call_ollama(f"{SYSTEM_PROMPT}\n\nHere are summaries of the different parts of the recording. Combine them into one coherent report:\n\n{master_summary}", unload=True)
 
 def run_transcription_pipeline(file_path, original_name):
@@ -97,18 +89,16 @@ def run_transcription_pipeline(file_path, original_name):
         print(f"🧠 Loading Whisper for: {original_name}")
         model = whisper.load_model("medium") 
         
-        # Force English to stop Welsh hallucinations
         result = model.transcribe(file_path, language="en", condition_on_previous_text=False)
         full_text = result['text']
         segments = result['segments']
         
-        # Purge Whisper
-        purge_vram(model)
+        # ⚡ CRITICAL FIX: Delete variable here, NOT in a helper function
+        del model 
+        purge_vram() # Now GC can actually collect it
 
         # --- PHASE 2: OLLAMA SUMMARIZATION ---
-        # (Inside this function, we handle the keep_alive logic)
         summary = summarize_with_ollama(full_text)
-        
         if not summary:
             summary = "Summary unavailable (Ollama connection failed)."
 
