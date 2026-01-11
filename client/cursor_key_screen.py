@@ -1,20 +1,24 @@
 import sys
 import os
 import time
-import requests # <--- NEW: For pinging server
+import requests
 import threading
 from PyQt6.QtWidgets import (
     QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout, QWidget, 
-    QLabel, QFrame, QApplication, QLineEdit, QProgressBar # <--- NEW
+    QLabel, QFrame, QApplication, QLineEdit, QProgressBar
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
 # --- THE SATELLITE WINDOW (Content) ---
 class ContentPanel(QWidget):
+    # ⚡ SIGNAL BRIDGE: This allows the background thread to talk to the GUI safely
+    sig_stats_update = pyqtSignal(object) 
+
     def __init__(self):
         super().__init__()
         
-        self.server_url = "http://100.94.65.56:8000" # Base URL (no /transcribe)
+        # ⚠️ VERIFY THIS IP MATCHES YOUR SERVER
+        self.server_url = "http://100.94.65.56:8000" 
 
         # Window Flags
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
@@ -26,7 +30,11 @@ class ContentPanel(QWidget):
 
         # --- COMPONENTS ---
         self.init_conversation_panel()
-        self.init_hud_panel() # <--- Renamed to HUD
+        self.init_hud_panel()
+
+        # --- SIGNALS ---
+        # Connect the signal to the UI update function
+        self.sig_stats_update.connect(self._update_hud_ui)
 
         # --- POLLING TIMER ---
         self.stats_timer = QTimer()
@@ -39,82 +47,87 @@ class ContentPanel(QWidget):
         self.layout.addWidget(self.conversation_display)
 
     def init_hud_panel(self):
-        """Creates the Video Game Style HUD."""
+        """Creates the Video Game Style HUD (Bottom Left)."""
         self.shalom_frame = QFrame()
         self.shalom_frame.hide()
+        self.shalom_frame.setFixedSize(300, 120)
         
-        # HUD STYLE
+        # HIGH CONTRAST STYLE
         self.shalom_frame.setStyleSheet("""
             QFrame {
-                background-color: rgba(0, 10, 20, 220); /* Darker, Game-like */
-                border: 1px solid rgba(0, 255, 255, 50); /* Cyan glow border */
-                border-left: 2px solid #00e5ff; /* Accent on left */
-                border-radius: 0px; /* Sharp corners */
-                padding: 10px;
+                background-color: rgba(5, 15, 25, 250); 
+                border: 2px solid #00e5ff; /* Bright Cyan Border */
+                border-radius: 6px;
             }
         """)
 
         hud_layout = QVBoxLayout(self.shalom_frame)
         hud_layout.setSpacing(5)
+        hud_layout.setContentsMargins(15, 15, 15, 15)
         
         # 1. STATUS HEADER
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(10)
+        
         self.status_light = QLabel("●")
-        self.status_light.setStyleSheet("color: #ff5252; font-size: 14px;") # Start Red
+        self.status_light.setStyleSheet("color: #ff0000; font-size: 20px; border: none; margin-top: -4px;") 
         header_layout.addWidget(self.status_light)
         
-        self.server_label = QLabel("DISCONNECTED")
-        self.server_label.setStyleSheet("color: white; font-weight: bold; font-family: Consolas; font-size: 14px;")
+        self.server_label = QLabel("INITIALIZING...")
+        self.server_label.setStyleSheet("color: #ffffff; font-weight: bold; font-family: Consolas; font-size: 16px; border: none;")
         header_layout.addWidget(self.server_label)
+        
         header_layout.addStretch()
         hud_layout.addLayout(header_layout)
 
-        # 2. VRAM BAR (The Mana Bar)
-        self.vram_label = QLabel("VRAM USAGE")
-        self.vram_label.setStyleSheet("color: #b3e5fc; font-size: 10px; font-weight: bold; margin-top: 5px;")
+        # 2. VRAM BAR
+        self.vram_label = QLabel("GPU MEMORY")
+        self.vram_label.setStyleSheet("color: #00e5ff; font-size: 12px; font-weight: bold; border: none; margin-top: 5px;")
         hud_layout.addWidget(self.vram_label)
 
         self.vram_bar = QProgressBar()
-        self.vram_bar.setFixedHeight(8)
+        self.vram_bar.setFixedHeight(10)
         self.vram_bar.setTextVisible(False)
         self.vram_bar.setStyleSheet("""
             QProgressBar {
-                border: 1px solid #444;
-                background-color: #111;
-                border-radius: 2px;
+                border: 1px solid #555;
+                background-color: #222;
+                border-radius: 4px;
             }
             QProgressBar::chunk {
                 background-color: #00e5ff; 
+                border-radius: 4px;
             }
         """)
         hud_layout.addWidget(self.vram_bar)
 
-        self.vram_text = QLabel("0 GB / 24 GB")
+        self.vram_text = QLabel("WAITING...")
         self.vram_text.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.vram_text.setStyleSheet("color: #81d4fa; font-size: 10px; font-family: Consolas;")
+        self.vram_text.setStyleSheet("color: #cccccc; font-size: 11px; font-family: Consolas; border: none;")
         hud_layout.addWidget(self.vram_text)
 
         self.layout.addWidget(self.shalom_frame)
 
     def update_position(self):
-        """Moves panel. HUD = Bottom Left. Convo = Dynamic."""
         screen_geo = QApplication.primaryScreen().geometry()
         
-        # --- MODE: HUD (SHALOM) ---
         if self.shalom_frame.isVisible():
-            # Snap to BOTTOM LEFT
-            width = 250
-            height = 100
-            x_pos = screen_geo.left() + 20
-            y_pos = screen_geo.bottom() - height - 60 # Above taskbar
+            width = 300
+            height = 120
+            x_pos = screen_geo.left() + 30
+            y_pos = screen_geo.bottom() - height - 80 
             
-            self.shalom_frame.setFixedSize(width, height)
-            self.move(x_pos, y_pos)
+            self.conversation_display.hide()
+            self.setMinimumSize(width, height)
+            self.setMaximumSize(width, height)
             self.resize(width, height)
-            return # Skip formatting styles for HUD (it has its own)
+            self.move(x_pos, y_pos)
+            return
 
-        # --- MODE: CONVERSATION ---
-        # Vertical Position: Below Command Bar
+        # Normal conversation mode logic
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+        
         y_pos = screen_geo.top() + 60
         height_ratio = 0.85
         target_height = int(screen_geo.height() * height_ratio)
@@ -125,7 +138,7 @@ class ContentPanel(QWidget):
         elif self.alignment_mode == "left":
             pane_width = int(screen_geo.width() * 0.30)
             x_pos = screen_geo.left()
-        else: # right
+        else: 
             pane_width = int(screen_geo.width() * 0.30)
             x_pos = screen_geo.right() - pane_width
             
@@ -135,7 +148,6 @@ class ContentPanel(QWidget):
         self._apply_convo_styles()
 
     def _apply_convo_styles(self):
-        """Existing styles for conversation panel."""
         base_style = """
             background-color: rgba(10, 30, 60, 180);
             padding: 10px; color: white;
@@ -153,66 +165,82 @@ class ContentPanel(QWidget):
 
     def show_content(self, content_type):
         if content_type == "conversation":
-            self.stats_timer.stop() # Stop polling
+            self.stats_timer.stop()
             self.shalom_frame.hide()
             self.conversation_display.show()
             self.update_position()
             self.show()
-            
         elif content_type == "shalom":
             if self.shalom_frame.isVisible():
-                self.hide() # Toggle OFF
+                self.hide() 
+                self.shalom_frame.hide()
                 self.stats_timer.stop()
             else:
                 self.conversation_display.hide()
                 self.shalom_frame.show()
                 self.update_position()
                 self.show()
-                self.poll_server() # Initial poll
-                self.stats_timer.start(2000) # Start polling every 2s
+                self.poll_server() 
+                self.stats_timer.start(2000) 
 
-    # --- POLLING LOGIC ---
     def poll_server(self):
         threading.Thread(target=self._fetch_stats, daemon=True).start()
 
     def _fetch_stats(self):
+        """Runs in background thread. Emits SIGNAL with data."""
         try:
-            resp = requests.get(f"{self.server_url}/stats", timeout=1.5)
+            resp = requests.get(f"{self.server_url}/stats", timeout=1.0)
+            
             if resp.status_code == 200:
-                data = resp.json()
-                # Update UI via Signal/Timer context (using invokeMethod or similar is safest, 
-                # but direct property set often works in basic pyqt threads. For strict correctness use signals)
-                # Since we are in a thread, we must be careful. 
-                # Let's use QTimer.singleShot to jump back to main thread.
-                QTimer.singleShot(0, lambda: self._update_hud_ui(data))
+                try:
+                    data = resp.json()
+                    # ⚡ EMIT SIGNAL: Hand off data to Main Thread
+                    self.sig_stats_update.emit(data)
+                except:
+                    self.sig_stats_update.emit({"error": "JSON ERROR"})
             else:
-                 QTimer.singleShot(0, lambda: self._update_hud_ui(None))
-        except:
-             QTimer.singleShot(0, lambda: self._update_hud_ui(None))
+                self.sig_stats_update.emit({"error": f"ERR {resp.status_code}"})
+                
+        except requests.exceptions.ConnectionError:
+            self.sig_stats_update.emit({"error": "NO LINK"})
+        except Exception:
+            self.sig_stats_update.emit({"error": "FAIL"})
 
     def _update_hud_ui(self, data):
-        if data:
-            self.status_light.setStyleSheet("color: #69f0ae;") # Green
-            self.server_label.setText(f"ONLINE ({data['gpu']})")
-            
-            self.vram_bar.setValue(data['vram_percent'])
-            self.vram_text.setText(f"{data['vram_used']} GB / {data['vram_total']} GB")
-            
-            # Critical VRAM color
-            if data['vram_percent'] > 90:
-                self.vram_bar.setStyleSheet("QProgressBar::chunk { background-color: #ff5252; }")
-            else:
-                self.vram_bar.setStyleSheet("QProgressBar::chunk { background-color: #00e5ff; }")
-        else:
-            self.status_light.setStyleSheet("color: #ff5252;") # Red
-            self.server_label.setText("DISCONNECTED")
+        """Runs on Main Thread. Updates GUI elements."""
+        
+        # Check for errors passed from thread
+        if "error" in data:
+            self.status_light.setStyleSheet("color: #ff0000; font-size: 20px; border: none; margin-top: -4px;") 
+            self.server_label.setText(data["error"])
             self.vram_bar.setValue(0)
-            self.vram_text.setText("-- / --")
+            self.vram_text.setText("RETRYING...")
+            return
 
-# --- THE ANCHOR WINDOW (Keep exactly as is, just imports ContentPanel) ---
+        # Process Valid Data
+        try:
+            gpu_name = data.get('gpu', 'Unknown GPU')
+            used = data.get('vram_used', 0)
+            total = data.get('vram_total', 24)
+            pct = data.get('vram_percent', 0)
+
+            self.status_light.setStyleSheet("color: #00ff00; font-size: 20px; border: none; margin-top: -4px;") 
+            self.server_label.setText(f"ONLINE ({gpu_name})")
+            
+            self.vram_bar.setValue(int(pct))
+            self.vram_text.setText(f"{used} GB / {total} GB")
+            
+            if pct > 90:
+                self.vram_bar.setStyleSheet("QProgressBar { border: 1px solid #555; background-color: #222; border-radius: 4px; } QProgressBar::chunk { background-color: #ff0000; border-radius: 4px; }")
+            else:
+                self.vram_bar.setStyleSheet("QProgressBar { border: 1px solid #555; background-color: #222; border-radius: 4px; } QProgressBar::chunk { background-color: #00e5ff; border-radius: 4px; }")
+        
+        except Exception as e:
+            print(f"❌ HUD Render Error: {e}")
+            self.server_label.setText("RENDER FAIL")
+
+# --- THE ANCHOR WINDOW ---
 class OverlayWindow(QMainWindow):
-    # ... (Keep your existing code for OverlayWindow exactly as it was) ...
-    # ... (Just Ensure it calls self.panel = ContentPanel()) ...
     text_received = pyqtSignal(str)
     sig_toggle = pyqtSignal(str)
     sig_message = pyqtSignal(str, str)
@@ -228,7 +256,6 @@ class OverlayWindow(QMainWindow):
         self.sig_message.connect(self._slot_add_message)
         self.sig_notify.connect(self._slot_update_notification)
         
-        # Window Setup
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
@@ -240,7 +267,6 @@ class OverlayWindow(QMainWindow):
         self.init_command_bar()
         self.center_bar()
 
-    # ... (Keep the rest of OverlayWindow existing methods: init_command_bar, center_bar, slots) ...
     def init_command_bar(self):
         self.command_frame = QFrame()
         self.command_frame.setFixedHeight(38)
