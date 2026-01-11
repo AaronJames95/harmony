@@ -8,11 +8,9 @@ import json
 from .notifier import deliver_transcript
 
 # --- CONFIGURATION ---
-# The URL where Ollama is listening (default is localhost:11434)
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3" 
 
-# A smarter prompt that handles both meetings and music/worship sessions
 SYSTEM_PROMPT = """
 You are an expert assistant analyzing an audio transcript.
 Note: The audio might be a meeting, a voice note, or a music/worship practice session containing lyrics.
@@ -30,20 +28,28 @@ def purge_vram(model_obj=None):
         del model_obj
     torch.cuda.empty_cache()
     gc.collect()
-    print("🧹 VRAM Purged.")
+    print("🧹 VRAM Purged (Whisper).")
 
-def call_ollama(prompt):
-    """Sends a prompt to the local Ollama instance."""
+def call_ollama(prompt, unload=False):
+    """
+    Sends a prompt to Ollama.
+    :param unload: If True, forces Ollama to free VRAM immediately after this response.
+    """
     try:
         payload = {
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.3, # Low temperature = less hallucination
-                "num_ctx": 4096     # Standard context window
+                "temperature": 0.3,
+                "num_ctx": 4096
             }
         }
+        
+        # ⚡ KEY CHANGE: Control memory persistence
+        if unload:
+            payload["keep_alive"] = 0 
+        
         response = requests.post(OLLAMA_URL, json=payload)
         response.raise_for_status()
         return response.json()['response']
@@ -54,19 +60,18 @@ def call_ollama(prompt):
 def summarize_with_ollama(full_text):
     print(f"🦙 Sending to Ollama ({OLLAMA_MODEL})...")
     
-    # 1. SAFETY: Short text doesn't need complex summarization
+    # 1. SHORT FILES (No Chunking)
     if len(full_text.split()) < 50:
-        return call_ollama(f"Summarize this briefly:\n{full_text}")
+        # Unload immediately since we are done
+        return call_ollama(f"Summarize this briefly:\n{full_text}", unload=True)
 
-    # 2. CHUNKING (Map-Reduce)
-    # Llama 3 has an 8k context, but to be safe with 40+ min files, 
-    # we chop it into ~12,000 character chunks (approx 3,000 tokens).
+    # 2. LONG FILES (Map-Reduce)
     chunk_size = 12000
     chunks = [full_text[i:i+chunk_size] for i in range(0, len(full_text), chunk_size)]
     
     if len(chunks) == 1:
-        # Fits in one go
-        return call_ollama(f"{SYSTEM_PROMPT}\n\nTRANSCRIPT:\n{full_text}")
+        # Fits in one go -> Unload immediately
+        return call_ollama(f"{SYSTEM_PROMPT}\n\nTRANSCRIPT:\n{full_text}", unload=True)
     
     # Process multiple chunks
     print(f"📄 Splitting into {len(chunks)} parts for analysis...")
@@ -74,14 +79,17 @@ def summarize_with_ollama(full_text):
     
     for i, chunk in enumerate(chunks):
         print(f"   ...Processing Part {i+1}/{len(chunks)}")
-        summary = call_ollama(f"Summarize this segment of a transcript:\n\n{chunk}")
+        # Keep model loaded between chunks for speed (unload=False)
+        summary = call_ollama(f"Summarize this segment of a transcript:\n\n{chunk}", unload=False)
         if summary:
             partial_summaries.append(summary)
 
     # Final consolidation
     print("🔗 Combining summaries...")
     master_summary = "\n".join(partial_summaries)
-    return call_ollama(f"{SYSTEM_PROMPT}\n\nHere are summaries of the different parts of the recording. Combine them into one coherent report:\n\n{master_summary}")
+    
+    # ⚡ FINAL STEP: Unload immediately because the job is done
+    return call_ollama(f"{SYSTEM_PROMPT}\n\nHere are summaries of the different parts of the recording. Combine them into one coherent report:\n\n{master_summary}", unload=True)
 
 def run_transcription_pipeline(file_path, original_name):
     try:
@@ -98,7 +106,9 @@ def run_transcription_pipeline(file_path, original_name):
         purge_vram(model)
 
         # --- PHASE 2: OLLAMA SUMMARIZATION ---
+        # (Inside this function, we handle the keep_alive logic)
         summary = summarize_with_ollama(full_text)
+        
         if not summary:
             summary = "Summary unavailable (Ollama connection failed)."
 
