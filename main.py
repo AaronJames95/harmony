@@ -2,7 +2,6 @@ import sys
 import os
 import signal
 from PyQt6.QtWidgets import QApplication
-
 # --- 1. SETUP ENVIRONMENT ---
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(ROOT_DIR)
@@ -17,6 +16,7 @@ from services.command_service import CommandService
 from plugins.system_plugin import SystemPlugin
 from plugins.deep_state_plugin import DeepStatePlugin
 from plugins.media_plugin import MediaPlugin
+from plugins.obsidian_plugin import ObsidianPlugin # <--- NEW IMPORT
 from ui.windows.overlay import OverlayWindow
 
 def main():
@@ -35,6 +35,7 @@ def main():
     print("🔌 Loading Plugins...")
     SystemPlugin().register(command_service)
     DeepStatePlugin(db_service).register(command_service)
+    ObsidianPlugin().register(command_service)
     
     media_plugin = MediaPlugin()
     command_service.register("PROCESS_AUDIO", ["process audio", "transcribe"], 
@@ -44,6 +45,7 @@ def main():
     # --- C. CORE ENGINE ---
     print("🧠 Starting Engine...")
     ingestor = Ingestor(db_service)
+    ingestor.start()  # <--- CRITICAL ADDITION
     
     # 1. The Watchdog (Eyes - Clipboard)
     clipboard_dog = IngestorWatchdog(ingestor)

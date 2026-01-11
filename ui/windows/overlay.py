@@ -1,28 +1,27 @@
 import sys
+import time
 import threading
 import requests
 from PyQt6.QtWidgets import (
     QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout, QWidget, 
     QLabel, QFrame, QApplication, QLineEdit, QProgressBar
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
-# ⚡ NEW ARCHITECTURE IMPORT
 from core.event_bus import bus, Events
 
-# ==========================================
-# 1. THE COMPACT HUD (Flush Bottom-Left)
-# ==========================================
+# ... [HudPanel class stays the same as previous step] ...
+# (I will skip repeating HudPanel code to save space, assuming you have it. 
+#  If not, I can repost it. The focus here is ConversationPanel.)
+
 class HudPanel(QWidget):
     # Internal signal to update UI safely from background threads
     sig_update = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
-        # ⚠️ We will eventually move this URL to config.yaml
         self.server_url = "http://100.94.65.56:8000" 
 
-        # Window Flags
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -31,13 +30,9 @@ class HudPanel(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.init_ui()
 
-        # Connect internal signal
         self.sig_update.connect(self._apply_ui_update)
-        
-        # Subscribe to Bus Events
         bus.subscribe(Events.HUD_UPDATE, self.handle_bus_event)
         
-        # Start Polling
         self.timer = QTimer()
         self.timer.timeout.connect(self.poll_server)
 
@@ -57,7 +52,6 @@ class HudPanel(QWidget):
         layout.setSpacing(2)
         layout.setContentsMargins(8, 8, 8, 5)
 
-        # Row 1
         row1 = QHBoxLayout()
         self.status_light = QLabel("●")
         self.status_light.setStyleSheet("color: #ff0000; font-size: 12px; border: none; margin-top: -1px;")
@@ -69,7 +63,6 @@ class HudPanel(QWidget):
         row1.addStretch()
         layout.addLayout(row1)
 
-        # Row 2
         row2 = QHBoxLayout()
         self.vram_bar = QProgressBar()
         self.vram_bar.setFixedHeight(4)
@@ -85,7 +78,6 @@ class HudPanel(QWidget):
         self.layout.addWidget(self.frame)
 
     def handle_bus_event(self, data):
-        """Reacts to 'TOGGLE_SHALOM' or similar events."""
         if data.get("action") == "toggle" and data.get("panel") == "shalom":
             self.toggle()
 
@@ -142,10 +134,10 @@ class HudPanel(QWidget):
         """)
 
 # ==========================================
-# 2. THE CONVERSATION PANEL
+# 2. THE CONVERSATION PANEL (Rich Formatting Restored)
 # ==========================================
 class ConversationPanel(QWidget):
-    sig_log = pyqtSignal(str)
+    sig_log = pyqtSignal(str, str) # Changed signature to take (sender, message)
 
     def __init__(self):
         super().__init__()
@@ -163,26 +155,44 @@ class ConversationPanel(QWidget):
         self.alignment_mode = "right"
         self._apply_style()
 
-        # Wire up signals
-        self.sig_log.connect(self._append_html)
+        # Connect signals
+        self.sig_log.connect(self._render_message)
         
-        # Subscribe to Event Bus
+        # Subscribe to Bus
         bus.subscribe(Events.LOG_MESSAGE, self.handle_log_event)
         bus.subscribe(Events.HUD_UPDATE, self.handle_hud_event)
 
-    def handle_log_event(self, message):
-        """Called when system wants to print a message."""
-        # Simple HTML formatting
-        html = f"<span style='color: #ffffff; font-family: Segoe UI; font-size: 14px;'>{message}</span>"
-        self.sig_log.emit(html)
+    def handle_log_event(self, data):
+        """
+        Expects data to be a string OR a dict.
+        String -> assumed SYSTEM message.
+        Dict -> {"sender": "USER", "text": "..."}
+        """
+        sender = "SYSTEM"
+        text = str(data)
+        
+        if isinstance(data, dict):
+            sender = data.get("sender", "SYSTEM")
+            text = data.get("text", "")
+            
+        self.sig_log.emit(sender, text)
 
     def handle_hud_event(self, data):
         if data.get("action") == "toggle" and data.get("panel") == "conversation":
             self.toggle()
+        elif data.get("action") == "align":
+            self.set_alignment(data.get("mode"))
+
+    def set_alignment(self, mode):
+        self.alignment_mode = mode
+        self._apply_style()
+        if self.isVisible():
+            self.update_position()
 
     def _apply_style(self):
         base = "background-color: rgba(10, 30, 60, 180); padding: 10px; color: white; border: 1px solid white;"
         radius = "border-radius: 12px;"
+        
         if self.alignment_mode == "left":
             radius = "border-top-right-radius: 12px; border-bottom-right-radius: 12px;"
         elif self.alignment_mode == "right":
@@ -191,7 +201,8 @@ class ConversationPanel(QWidget):
         self.display.setStyleSheet(f"QTextEdit {{ {base} {radius} }}")
 
     def toggle(self):
-        if self.isVisible(): self.hide()
+        if self.isVisible():
+            self.hide()
         else:
             self.update_position()
             self.show()
@@ -201,28 +212,67 @@ class ConversationPanel(QWidget):
         screen = QApplication.primaryScreen().geometry()
         y = screen.top() + 60
         h = int(screen.height() * 0.85)
-        w = int(screen.width() * 0.30)
         
         if self.alignment_mode == "center":
             w = 650
             x = screen.x() + (screen.width() - w) // 2
         elif self.alignment_mode == "left":
+            w = int(screen.width() * 0.30)
             x = screen.left()
-        else: 
+        else: # right
+            w = int(screen.width() * 0.30)
             x = screen.right() - w
             
         self.setGeometry(x, y, w, h)
 
-    def _append_html(self, html):
+    def _render_message(self, sender, text):
+        """Restored HTML Logic from original code."""
+        timestamp = time.strftime("%H:%M")
+        display_name = "HARMONY🎵" if sender == "SYSTEM" else sender
+        
+        if sender == "SYSTEM":
+            align = "left"
+            bg_color = "rgba(255, 255, 255, 20)" 
+            text_color = "#ffffff"
+            meta_color = "#b0bec5"
+            border = "1px solid rgba(255,255,255,50)"
+        else:
+            align = "right"
+            bg_color = "rgba(0, 200, 255, 40)" 
+            text_color = "#ffffff"
+            meta_color = "#e0f7fa"
+            border = "1px solid rgba(0, 255, 255, 100)"
+
+        html = f"""
+        <table width="100%" border="0" cellpadding="2">
+            <tr>
+                <td align="{align}">
+                    <div style="
+                        background-color: {bg_color}; border: {border};
+                        border-radius: 10px; padding: 8px 12px; margin-bottom: 5px;
+                        display: inline-block;">
+                        <span style="font-size: 10px; color: {meta_color}; font-weight: bold;">
+                            {display_name} • {timestamp}
+                        </span><br>
+                        <span style="font-size: 14px; color: {text_color}; font-family: 'Segoe UI';">{text}</span>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        """
+        
         self.display.append(html)
-        self.display.verticalScrollBar().setValue(self.display.verticalScrollBar().maximum())
-        if not self.isVisible(): self.toggle()
+        self.display.verticalScrollBar().setValue(
+            self.display.verticalScrollBar().maximum()
+        )
+        
+        if not self.isVisible():
+            self.toggle()
 
 # ==========================================
 # 3. THE COMMAND BAR (Main Anchor)
 # ==========================================
 class OverlayWindow(QMainWindow):
-    # Internal signal for thread-safe UI updates
     sig_notify = pyqtSignal(str, str)
 
     def __init__(self):
@@ -231,11 +281,10 @@ class OverlayWindow(QMainWindow):
         self.convo_panel = ConversationPanel()
         self.hud_panel = HudPanel()
         
-        # Subscribe to Status Events
+        # Subscribe to Events
         bus.subscribe(Events.STATUS_CHANGED, self.handle_status_event)
         self.sig_notify.connect(self._update_notification_ui)
 
-        # Window Setup
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
@@ -269,14 +318,9 @@ class OverlayWindow(QMainWindow):
         self.input_line.setPlaceholderText("awaiting command...")
         self.input_line.setStyleSheet("background: transparent; border: none; color: white; font-family: Consolas; font-size: 12px; font-weight: bold;")
         self.input_line.textChanged.connect(self.broadcast_input)
-        # Note: We are not wiring up text input yet in this refactor step
         layout.addWidget(self.input_line)
         
         self.main_layout.addWidget(self.command_frame)
-
-    def broadcast_input(self, text):
-        """Fires whenever the input text changes (typing or dictation)."""
-        bus.emit(Events.GUI_INPUT_UPDATE, text)
 
     def center_bar(self):
         screen = QApplication.primaryScreen().geometry()
@@ -285,8 +329,10 @@ class OverlayWindow(QMainWindow):
         self.resize(650, 40) 
         self.move(x, y)
 
+    def broadcast_input(self, text):
+        bus.emit(Events.GUI_INPUT_UPDATE, text)
+
     def handle_status_event(self, data):
-        """Called when backend says 'STATUS_CHANGED'."""
         text = data.get("text", "READY")
         color = data.get("color", "white")
         self.sig_notify.emit(text, color)
