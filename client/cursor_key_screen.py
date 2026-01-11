@@ -10,25 +10,31 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
 # ==========================================
-# 1. THE HUD PANEL (Bottom-Left)
+# 1. THE COMPACT HUD (Flush Bottom-Left)
 # ==========================================
 class HudPanel(QWidget):
     sig_stats_update = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
+        # ⚠️ SERVER IP
         self.server_url = "http://100.94.65.56:8000" 
 
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        # Window Setup
+        # ToolTip flag often forces it above the Taskbar better than just Tool
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.Tool
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        
-        # ⚡ FIX: Prevent this window from stealing focus when it appears
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
         self.sig_stats_update.connect(self._update_ui)
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
+        
         self.init_ui()
         
         self.timer = QTimer()
@@ -36,50 +42,57 @@ class HudPanel(QWidget):
 
     def init_ui(self):
         self.frame = QFrame()
-        self.frame.setFixedSize(300, 120)
+        # ⚡ COMPACT SIZE: Fits in the corner taskbar area
+        self.frame.setFixedSize(210, 55) 
+        
         self.frame.setStyleSheet("""
             QFrame {
-                background-color: rgba(5, 15, 25, 240); 
-                border: 2px solid #00e5ff; 
-                border-radius: 6px;
+                background-color: rgba(5, 10, 15, 255); 
+                border: 1px solid #00e5ff;
+                border-left: none; /* Flush with screen edge */
+                border-bottom: none; /* Flush with taskbar */
+                border-top-right-radius: 6px;
+                border-bottom-left-radius: 0px; /* Sharp corner for anchor */
             }
         """)
         
         layout = QVBoxLayout(self.frame)
-        layout.setSpacing(5)
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(2)
+        layout.setContentsMargins(8, 8, 8, 5) # Tight margins
 
-        # Header
-        header = QHBoxLayout()
+        # ROW 1: Status Line
+        row1 = QHBoxLayout()
+        row1.setSpacing(6)
+        
         self.status_light = QLabel("●")
-        self.status_light.setStyleSheet("color: #ff0000; font-size: 20px; border: none; margin-top: -4px;")
-        header.addWidget(self.status_light)
+        self.status_light.setStyleSheet("color: #ff0000; font-size: 12px; border: none; margin-top: -1px;")
+        row1.addWidget(self.status_light)
         
         self.server_label = QLabel("INITIALIZING...")
-        self.server_label.setStyleSheet("color: white; font-weight: bold; font-family: Consolas; font-size: 16px; border: none;")
-        header.addWidget(self.server_label)
-        header.addStretch()
-        layout.addLayout(header)
+        self.server_label.setStyleSheet("color: white; font-weight: bold; font-family: 'Segoe UI'; font-size: 11px; border: none;")
+        row1.addWidget(self.server_label)
+        row1.addStretch()
+        layout.addLayout(row1)
 
-        # VRAM
-        self.vram_label = QLabel("GPU MEMORY")
-        self.vram_label.setStyleSheet("color: #00e5ff; font-size: 12px; font-weight: bold; border: none; margin-top: 5px;")
-        layout.addWidget(self.vram_label)
-
+        # ROW 2: VRAM Bar + Text
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        
         self.vram_bar = QProgressBar()
-        self.vram_bar.setFixedHeight(10)
+        self.vram_bar.setFixedHeight(4) # Very thin
         self.vram_bar.setTextVisible(False)
         self.vram_bar.setStyleSheet("""
-            QProgressBar { border: 1px solid #555; background-color: #222; border-radius: 4px; }
-            QProgressBar::chunk { background-color: #00e5ff; border-radius: 4px; }
+            QProgressBar { border: none; background-color: #222; border-radius: 2px; }
+            QProgressBar::chunk { background-color: #00e5ff; border-radius: 2px; }
         """)
-        layout.addWidget(self.vram_bar)
-
-        self.vram_text = QLabel("WAITING...")
-        self.vram_text.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.vram_text.setStyleSheet("color: #cccccc; font-size: 11px; font-family: Consolas; border: none;")
-        layout.addWidget(self.vram_text)
-
+        row2.addWidget(self.vram_bar)
+        
+        # ⚡ CHANGED LABEL: "VRAM"
+        self.vram_text = QLabel("VRAM") 
+        self.vram_text.setStyleSheet("color: #90a4ae; font-size: 9px; font-weight: bold; font-family: Consolas; border: none;")
+        row2.addWidget(self.vram_text)
+        
+        layout.addLayout(row2)
         self.layout.addWidget(self.frame)
 
     def toggle(self):
@@ -88,16 +101,19 @@ class HudPanel(QWidget):
             self.timer.stop()
         else:
             self.update_position()
-            # ⚡ Use show() but the Attribute we set prevents activation
             self.show()
+            self.raise_() # ⚡ FORCE TO TOP (Above Taskbar)
             self.poll_server()
             self.timer.start(2000)
 
     def update_position(self):
         screen = QApplication.primaryScreen().geometry()
-        width, height = 300, 120
-        x = screen.left() + 30
-        y = screen.bottom() - height - 80 
+        width, height = 360, 48
+        
+        # ⚡ ABSOLUTE CORNER (0, MaxHeight)
+        x = screen.left()
+        y = screen.bottom() - height + 1 # +1 to ensure it kisses the bezel
+        
         self.setGeometry(x, y, width, height)
 
     def poll_server(self):
@@ -111,29 +127,31 @@ class HudPanel(QWidget):
             else:
                 self.sig_stats_update.emit({"error": f"ERR {resp.status_code}"})
         except:
-            self.sig_stats_update.emit({"error": "NO LINK"})
+            self.sig_stats_update.emit({"error": "OFFLINE"})
 
     def _update_ui(self, data):
         if "error" in data:
-            self.status_light.setStyleSheet("color: #ff0000; font-size: 20px; border: none; margin-top: -4px;")
+            self.status_light.setStyleSheet("color: #ff0000; font-size: 12px; border: none;")
             self.server_label.setText(data["error"])
             self.vram_bar.setValue(0)
+            self.vram_text.setText("VRAM: --")
             return
 
-        gpu = data.get('gpu', 'CPU')
+        gpu = data.get('gpu', 'CPU').split("RTX")[-1].strip() # Shorten name (e.g. "3090")
         used = data.get('vram_used', 0)
         total = data.get('vram_total', 24)
         pct = int(data.get('vram_percent', 0))
 
-        self.status_light.setStyleSheet("color: #00ff00; font-size: 20px; border: none; margin-top: -4px;")
-        self.server_label.setText(f"ONLINE ({gpu})")
+        self.status_light.setStyleSheet("color: #00ff00; font-size: 12px; border: none;")
+        self.server_label.setText(f"ONLINE: {gpu}")
         self.vram_bar.setValue(pct)
-        self.vram_text.setText(f"{used} GB / {total} GB")
+        # Display simplified VRAM stat
+        self.vram_text.setText(f"VRAM: {int(used)}G")
         
         color = "#ff0000" if pct > 90 else "#00e5ff"
         self.vram_bar.setStyleSheet(f"""
-            QProgressBar {{ border: 1px solid #555; background-color: #222; border-radius: 4px; }}
-            QProgressBar::chunk {{ background-color: {color}; border-radius: 4px; }}
+            QProgressBar {{ border: none; background-color: #222; border-radius: 2px; }}
+            QProgressBar::chunk {{ background-color: {color}; border-radius: 2px; }}
         """)
 
 
@@ -145,8 +163,6 @@ class ConversationPanel(QWidget):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        
-        # ⚡ FIX: Prevent focus stealing here too
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         
         self.layout = QVBoxLayout(self)
@@ -187,6 +203,7 @@ class ConversationPanel(QWidget):
         else:
             self.update_position()
             self.show()
+            self.raise_()
 
     def update_position(self):
         screen = QApplication.primaryScreen().geometry()
