@@ -1,4 +1,4 @@
-name: muscular_env
+name: muscular_env  # (I added the name back in for safety)
 channels:
   - pytorch
   - nvidia
@@ -6,11 +6,11 @@ channels:
   - defaults
 dependencies:
   - python=3.10
-  - numpy<2          # ADD THIS: Essential to prevent the Whisper/Numba crash
+  - numpy<2           # Good catch keeping this!
   - pytorch
   - torchvision
   - torchaudio
-  - pytorch-cuda=11.8
+  - pytorch-cuda=12.1 # <--- THE CRITICAL FIX (Was 11.8)
   - fastapi
   - uvicorn
   - openai-whisper
