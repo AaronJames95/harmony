@@ -9,7 +9,7 @@ from .notifier import deliver_transcript
 
 # --- CONFIGURATION ---
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3" 
+OLLAMA_MODEL = "llama3"
 
 SYSTEM_PROMPT = """
 You are an expert assistant analyzing an audio transcript.
@@ -23,12 +23,25 @@ Your Goal:
 """
 # ---------------------
 
-def purge_vram():
-    """Forces PyTorch to release cached memory."""
+def release_vram(model_obj):
+    """
+    Nuclear option to force PyTorch to release VRAM back to the OS
+    so Ollama can use it.
+    """
+    print("🧹 Starting VRAM Purge...")
+
+    # 1. Delete the model from Python memory
+    del model_obj
+
+    # 2. Force Python Garbage Collection
+    gc.collect()
+
+    # 3. Force PyTorch to release cached memory to the OS
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    gc.collect()
-    print("🧹 VRAM Purged.")
+        torch.cuda.synchronize()
+
+    print("✨ VRAM Released to OS.")
 
 def call_ollama(prompt, unload=False):
     """
@@ -93,9 +106,10 @@ def run_transcription_pipeline(file_path, original_name):
         full_text = result['text']
         segments = result['segments']
         
-        # ⚡ CRITICAL FIX: Delete variable here, NOT in a helper function
-        del model 
-        purge_vram() # Now GC can actually collect it
+        # --- NUCLEAR VRAM CLEANUP ---
+        # This replaces your old 'del model' and 'purge_vram()' lines
+        release_vram(model) 
+        model = None # Double safety to ensure the variable is dead
 
         # --- PHASE 2: OLLAMA SUMMARIZATION ---
         summary = summarize_with_ollama(full_text)
