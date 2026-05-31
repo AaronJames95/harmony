@@ -1,0 +1,45 @@
+# ── Personal data — NEVER commit (CLAUDE.md rule 1) ──
+vault/
+data/
+transcripts/
+extracts/
+daily/
+daily-raw/
+bootstrap/
+inbox/
+attention/
+out/
+tmp/
+
+# samples/ is intentionally NOT ignored — it is synthetic test data.
+
+# ── Secrets ──
+.env
+*.env
+.env.*
+!.env.example
+secrets*
+*.key
+*.pem
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ── Model weights / caches (large, not source) ──
+*.bin
+*.pt
+*.ckpt
+models/
+
+# ── OS / editor ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
