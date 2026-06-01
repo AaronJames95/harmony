@@ -83,11 +83,13 @@ Monorepo layout:
 
 Fill these in as you build each piece; keep this list current.
 ```
-# (compute/) transcribe backlog:   <cmd>
-# (compute/) extract one day:       <cmd>
-# (compute/) run weekly review:     <cmd>
-# (control/) start the watcher:     <cmd>
-# run tests:                        <cmd>
+# (compute/) combine legacy backlog: python compute/combine.py --inputs samples/legacy --format legacy --out out/
+# (compute/) combine new-template:   python compute/combine.py --inputs samples/new --format new_template --out out/
+# (compute/) transcribe backlog:     python compute/transcribe.py --inputs <media-dir> --out <out-dir>
+# (compute/) extract one day:        <cmd>
+# (compute/) run weekly review:      <cmd>
+# (control/) start the watcher:      <cmd>
+# run tests:                         .venv/bin/python -m pytest tests/ -v
 ```
 
 ## Conventions
