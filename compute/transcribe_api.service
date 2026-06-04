@@ -8,8 +8,9 @@ Type=simple
 # Before installing: replace /home/aaron with the actual user's home directory.
 User=aaron
 WorkingDirectory=/home/aaron/Documents/harmony
+# Bind to the Tailscale interface IP — set FORGE_TAILSCALE_IP in .env
 EnvironmentFile=/home/aaron/Documents/harmony/.env
-ExecStart=/home/aaron/Documents/harmony/.venv/bin/uvicorn compute.transcribe_api:app \
+ExecStart=/home/aaron/Documents/harmony/.venv/bin/python3 -m uvicorn compute.transcribe_api:app \
     --host ${FORGE_TAILSCALE_IP} \
     --port 8765
 Restart=always
@@ -17,3 +18,4 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
+
