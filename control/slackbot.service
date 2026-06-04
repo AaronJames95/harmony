@@ -9,7 +9,7 @@ User=aaron
 WorkingDirectory=/home/aaron/Documents/harmony
 EnvironmentFile=/home/aaron/Documents/harmony/.env
 ExecStart=/home/aaron/Documents/harmony/.venv/bin/python control/slackbot.py
-Restart=on-failure
+Restart=always
 RestartSec=10
 
 [Install]

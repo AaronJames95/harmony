@@ -12,7 +12,7 @@ EnvironmentFile=/home/aaron/Documents/harmony/.env
 ExecStart=/home/aaron/Documents/harmony/.venv/bin/uvicorn compute.transcribe_api:app \
     --host ${FORGE_TAILSCALE_IP} \
     --port 8765
-Restart=on-failure
+Restart=always
 RestartSec=10
 
 [Install]
