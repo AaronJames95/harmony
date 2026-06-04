@@ -79,6 +79,16 @@ Monorepo layout:
   Inbox delivery pattern. Gate: something useful and not noisy lands in `/inbox`.
 - Stage 4+ — only after the above earns it.
 
+## Setup (fresh clone)
+
+```
+# On Conductor (NUC):
+./setup.sh conductor
+
+# On Forge (workstation):
+./setup.sh forge
+```
+
 ## Commands
 
 Fill these in as you build each piece; keep this list current.
