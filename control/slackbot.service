@@ -6,9 +6,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=aaron
-WorkingDirectory=/home/aaron/Documents/harmony
-EnvironmentFile=/home/aaron/Documents/harmony/.env
-ExecStart=/home/aaron/Documents/harmony/.venv/bin/python control/slackbot.py
+WorkingDirectory=%h/Documents/harmony
+EnvironmentFile=%h/Documents/harmony/.env
+ExecStart=%h/Documents/harmony/.venv/bin/python control/slackbot.py
 Restart=always
 RestartSec=10
 

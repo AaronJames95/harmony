@@ -6,10 +6,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=aaron
-WorkingDirectory=/home/aaron/Documents/harmony
+WorkingDirectory=%h/Documents/harmony
 # Bind to the Tailscale interface IP — set FORGE_TAILSCALE_IP in .env
-EnvironmentFile=/home/aaron/Documents/harmony/.env
-ExecStart=/home/aaron/Documents/harmony/.venv/bin/uvicorn compute.transcribe_api:app \
+EnvironmentFile=%h/Documents/harmony/.env
+ExecStart=%h/Documents/harmony/.venv/bin/uvicorn compute.transcribe_api:app \
     --host ${FORGE_TAILSCALE_IP} \
     --port 8765
 Restart=always
