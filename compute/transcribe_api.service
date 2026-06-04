@@ -5,12 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Edit User= and the home path below to match the target machine before installing.
+# Before installing: replace /home/aaron with the actual user's home directory.
 User=aaron
-WorkingDirectory=%h/Documents/harmony
-# %h does not expand in EnvironmentFile — set absolute path matching User= above.
+WorkingDirectory=/home/aaron/Documents/harmony
 EnvironmentFile=/home/aaron/Documents/harmony/.env
-ExecStart=%h/Documents/harmony/.venv/bin/uvicorn compute.transcribe_api:app \
+ExecStart=/home/aaron/Documents/harmony/.venv/bin/uvicorn compute.transcribe_api:app \
     --host ${FORGE_TAILSCALE_IP} \
     --port 8765
 Restart=always
