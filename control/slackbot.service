@@ -1,0 +1,16 @@
+[Unit]
+Description=Harmony Slack Transcription Bot
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aaron
+WorkingDirectory=/home/aaron/Documents/harmony
+EnvironmentFile=/home/aaron/Documents/harmony/.env
+ExecStart=/home/aaron/Documents/harmony/.venv/bin/python control/slackbot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

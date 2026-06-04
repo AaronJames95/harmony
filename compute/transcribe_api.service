@@ -1,0 +1,19 @@
+[Unit]
+Description=Harmony Transcription API (faster-whisper)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aaron
+WorkingDirectory=/home/aaron/Documents/harmony
+# Bind to the Tailscale interface IP — set FORGE_TAILSCALE_IP in .env
+EnvironmentFile=/home/aaron/Documents/harmony/.env
+ExecStart=/home/aaron/Documents/harmony/.venv/bin/uvicorn compute.transcribe_api:app \
+    --host ${FORGE_TAILSCALE_IP} \
+    --port 8765
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
