@@ -5,9 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# Edit User= and the home path below to match the target machine before installing.
 User=aaron
 WorkingDirectory=%h/Documents/harmony
-EnvironmentFile=%h/Documents/harmony/.env
+# %h does not expand in EnvironmentFile — set absolute path matching User= above.
+EnvironmentFile=/home/aaron/Documents/harmony/.env
 ExecStart=%h/Documents/harmony/.venv/bin/python control/slackbot.py
 Restart=always
 RestartSec=10
