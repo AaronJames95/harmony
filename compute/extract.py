@@ -180,7 +180,7 @@ def _call_ollama(prompt: str, model: str, url: str) -> str:
             "format": _EXTRACT_SCHEMA,
             "stream": False,
             "options": {
-                "num_predict": 2000,
+                "num_predict": 4000,
                 "num_ctx": 8192,
             },
         },

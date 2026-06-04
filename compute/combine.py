@@ -48,14 +48,13 @@ _ENTRY_RE = re.compile(r"(?m)^(?=- \d+/\d+[:.]\s)")
 _HEADER_RE = re.compile(r"^- (\d+)/(\d+)[:.]\s*", re.MULTILINE)
 
 
-def _parse_morning_pages(path: Path) -> dict[datetime.date, str]:
-    """Return {date: body_text} from a legacy Morning Pages file.
+def _parse_morning_pages(path: Path) -> list[tuple[int, int, str]]:
+    """Return [(month, day, body), ...] in file order from a legacy Morning Pages file.
 
-    Year is not known yet; returns keys with month/day only as (month, day)
-    tuples — caller resolves to full dates after building the year map.
+    Year is not known yet; caller resolves via _resolve_mp_dates.
     """
     text = path.read_text(encoding="utf-8")
-    entries: dict[tuple[int, int], str] = {}
+    entries: list[tuple[int, int, str]] = []
     chunks = _ENTRY_RE.split(text)
     for chunk in chunks:
         chunk = chunk.strip()
@@ -64,8 +63,72 @@ def _parse_morning_pages(path: Path) -> dict[datetime.date, str]:
             continue
         month, day = int(m.group(1)), int(m.group(2))
         body = chunk[m.end():].strip()
-        entries[(month, day)] = body
+        entries.append((month, day, body))
     return entries
+
+
+def _resolve_mp_dates(
+    ordered: list[tuple[int, int, str]],
+    examen_month_years: dict[int, list[int]],
+    year_override: int | None,
+) -> dict[datetime.date, str]:
+    """Assign full dates to morning-pages entries using chronological rollover detection.
+
+    Iterates entries in file order; when month decreases, a year boundary has
+    been crossed and current_year increments.  Logs each assignment to stderr
+    so the year mapping is auditable.
+
+    Raises ValueError for genuinely ambiguous cases (no anchor, or multiple
+    examen years for the first month without a --year override).
+    """
+    if not ordered:
+        return {}
+
+    first_month = ordered[0][0]
+
+    if year_override is not None:
+        current_year = year_override
+        print(
+            f"  [combine] MP year: starting at {current_year} (--year override)",
+            file=sys.stderr,
+        )
+    else:
+        candidate_years = sorted(examen_month_years.get(first_month, []))
+        if not candidate_years:
+            raise ValueError(
+                f"Cannot determine year for morning-pages entries beginning in month "
+                f"{first_month}; no examen file covers that month. "
+                "Pass --year YYYY to set the year explicitly."
+            )
+        if len(candidate_years) > 1:
+            raise ValueError(
+                f"Month {first_month} appears in examen files for multiple years "
+                f"({candidate_years}); cannot unambiguously anchor morning-pages year. "
+                "Pass --year YYYY."
+            )
+        current_year = candidate_years[0]
+        print(
+            f"  [combine] MP year: anchored to {current_year} "
+            f"via EX_{first_month:02d}_{current_year}.md",
+            file=sys.stderr,
+        )
+
+    result: dict[datetime.date, str] = {}
+    prev_month: int | None = None
+
+    for month, day, body in ordered:
+        if prev_month is not None and month < prev_month:
+            current_year += 1
+            print(
+                f"  [combine] MP year: rollover month {prev_month}→{month}, now {current_year}",
+                file=sys.stderr,
+            )
+        date = datetime.date(current_year, month, day)
+        print(f"  [combine] MP {month}/{day} → {date}", file=sys.stderr)
+        result[date] = body
+        prev_month = month
+
+    return result
 
 
 _EXAMEN_ENTRY_RE = re.compile(r"(?m)^(?=- \d+/\d+[.:])")
@@ -100,52 +163,34 @@ def _process_legacy(
     generated_at: str,
     year_override: int | None,
 ) -> None:
-    # --- Collect examen files and build month→year map ---
-    month_to_year: dict[int, int] = {}
-    examen_entries: dict[tuple[int, int], str] = {}
+    # --- Collect examen files ---
+    # Key examen entries directly by full date (year taken from filename, not guessed).
+    # Also build examen_month_years for use as an anchor in morning-pages year resolution.
+    examen_by_date: dict[datetime.date, str] = {}
+    examen_month_years: dict[int, list[int]] = {}  # month → sorted list of years seen
 
-    for ex_path in inputs_dir.rglob("EX_*.md"):
-        file_month, file_year, entries = _parse_examen_file(ex_path)
-        month_to_year[file_month] = file_year
-        examen_entries.update(entries)
+    for ex_path in sorted(inputs_dir.rglob("EX_*.md")):
+        file_month, file_year, raw_entries = _parse_examen_file(ex_path)
+        examen_month_years.setdefault(file_month, []).append(file_year)
+        for (month, day), body in raw_entries.items():
+            examen_by_date[datetime.date(file_year, month, day)] = body
 
-    def resolve_year(month: int) -> int:
-        if year_override is not None:
-            return year_override
-        if month not in month_to_year:
-            raise ValueError(
-                f"No examen file covers month {month}; "
-                "pass --year YYYY to set the year explicitly."
-            )
-        return month_to_year[month]
-
-    # --- Collect morning-pages entries ---
-    mp_raw: dict[tuple[int, int], str] = {}
+    # --- Collect morning-pages entries and resolve years ---
+    mp_by_date: dict[datetime.date, str] = {}
     mp_path = inputs_dir / "Morning Pages.md"
     if mp_path.exists():
-        mp_raw = _parse_morning_pages(mp_path)
-
-    # --- Resolve full dates ---
-    all_md: dict[int, datetime.date] = {}  # month→day→date
-    mp: dict[datetime.date, str] = {}
-    for (month, day), body in mp_raw.items():
-        date = datetime.date(resolve_year(month), month, day)
-        mp[date] = body
-
-    ex: dict[datetime.date, str] = {}
-    for (month, day), body in examen_entries.items():
-        date = datetime.date(resolve_year(month), month, day)
-        ex[date] = body
+        mp_ordered = _parse_morning_pages(mp_path)
+        mp_by_date = _resolve_mp_dates(mp_ordered, examen_month_years, year_override)
 
     # --- Merge by date ---
-    all_dates = sorted(mp.keys() | ex.keys())
+    all_dates = sorted(mp_by_date.keys() | examen_by_date.keys())
     if not all_dates:
         print("Warning: no entries found in legacy inputs.", file=sys.stderr)
         return
 
     for date in _date_range(all_dates[0], all_dates[-1]):
-        mp_text = mp.get(date)
-        ex_text = ex.get(date)
+        mp_text = mp_by_date.get(date)
+        ex_text = examen_by_date.get(date)
 
         if mp_text is None and ex_text is None:
             # Gap-fill absence

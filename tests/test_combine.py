@@ -245,3 +245,81 @@ def test_resumable(tmp_path):
 
     mtimes_after = {p.name: p.stat().st_mtime for p in tmp_path.glob("*.md")}
     assert mtimes_before == mtimes_after, "Second run rewrote files that should be skipped"
+
+
+# ---------------------------------------------------------------------------
+# Dec→Jan year-rollover (multi-year corpus bug)
+# ---------------------------------------------------------------------------
+
+def _make_dec_jan_inputs(tmp_path_factory) -> Path:
+    inputs = tmp_path_factory.mktemp("dec_jan_inputs")
+
+    (inputs / "Morning Pages.md").write_text(
+        "- 12/29: end of year, feeling tired and grateful\n"
+        "- 12/31: last night of the year, quiet\n"
+        "- 1/2. fresh start, lighter somehow\n",
+        encoding="utf-8",
+    )
+
+    ex_dir_2025 = inputs / "examen" / "2025"
+    ex_dir_2025.mkdir(parents=True)
+    (ex_dir_2025 / "EX_12_2025.md").write_text(
+        "- 12/29: grateful for a hard year\n"
+        "- 12/31: closing out with honesty\n",
+        encoding="utf-8",
+    )
+
+    ex_dir_2026 = inputs / "examen" / "2026"
+    ex_dir_2026.mkdir(parents=True)
+    (ex_dir_2026 / "EX_01_2026.md").write_text(
+        "- 1/2: first examen of the new year\n",
+        encoding="utf-8",
+    )
+
+    return inputs
+
+
+@pytest.fixture(scope="module")
+def dec_jan_out(tmp_path_factory):
+    inputs = _make_dec_jan_inputs(tmp_path_factory)
+    out = tmp_path_factory.mktemp("dec_jan_out")
+    result = _run(inputs, "legacy", out)
+    assert result.returncode == 0, result.stderr
+    return out
+
+
+def test_dec_jan_december_dates(dec_jan_out):
+    for date_str in ("2025-12-29", "2025-12-31"):
+        p = dec_jan_out / f"{date_str}.md"
+        assert p.exists(), f"Expected {date_str}.md"
+        fm = _parse_frontmatter(p.read_text(encoding="utf-8"))
+        assert fm["date"] == date_str
+        assert fm["source_format"] == "legacy"
+
+
+def test_dec_jan_january_date(dec_jan_out):
+    p = dec_jan_out / "2026-01-02.md"
+    assert p.exists(), "Expected 2026-01-02.md after year rollover"
+    fm = _parse_frontmatter(p.read_text(encoding="utf-8"))
+    assert fm["date"] == "2026-01-02"
+    assert fm["source_format"] == "legacy"
+    assert fm["input_completion_score"] == 1.0
+
+
+def test_dec_jan_no_wrong_year_files(dec_jan_out):
+    # The January entry must not be mis-dated to 2025
+    assert not (dec_jan_out / "2025-01-02.md").exists()
+    # The December entries must not be mis-dated to 2026
+    assert not (dec_jan_out / "2026-12-29.md").exists()
+    assert not (dec_jan_out / "2026-12-31.md").exists()
+
+
+def test_dec_jan_rollover_logged(tmp_path_factory):
+    """Rollover and per-entry assignments must appear in stderr."""
+    inputs = _make_dec_jan_inputs(tmp_path_factory)
+    out = tmp_path_factory.mktemp("dec_jan_log_out")
+    result = _run(inputs, "legacy", out)
+    assert result.returncode == 0, result.stderr
+    assert "rollover" in result.stderr
+    assert "2025-12-29" in result.stderr
+    assert "2026-01-02" in result.stderr
