@@ -6,10 +6,18 @@ Returns:         {"transcript": "<markdown text>", "filename": "<original name>"
 
 Usage:
     uvicorn compute.transcribe_api:app --host <tailscale-ip> --port 8765
+
+Environment:
+    WHISPER_IDLE_TIMEOUT  seconds of inactivity before unloading model (default 600)
 """
 
+import asyncio
 import datetime
+import gc
+import logging
+import os
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -17,18 +25,61 @@ from fastapi.responses import JSONResponse
 
 _MEDIA_EXTENSIONS = {".mp4", ".mov", ".mp3", ".m4a", ".wav", ".ogg", ".webm"}
 
-app = FastAPI(title="Harmony Transcription API")
+IDLE_TIMEOUT = int(os.environ.get("WHISPER_IDLE_TIMEOUT", "600"))
+_CHECK_INTERVAL = 60
 
-# Model is loaded once at startup — expensive, keep it alive.
+log = logging.getLogger(__name__)
+
 _model = None
+_last_used: float = 0.0
+_active_count: int = 0
+_model_lock: asyncio.Lock
 
 
-def _get_model():
+def _load_model():
     global _model
     if _model is None:
         from faster_whisper import WhisperModel  # noqa: PLC0415
+        log.info("Loading Whisper model...")
         _model = WhisperModel("large-v3", device="cuda", compute_type="int8_float16")
+        log.info("Whisper model loaded.")
     return _model
+
+
+def _unload_model():
+    global _model
+    if _model is not None:
+        log.info("Unloading Whisper model (idle timeout).")
+        _model = None
+        gc.collect()
+
+
+async def _idle_watcher():
+    while True:
+        await asyncio.sleep(_CHECK_INTERVAL)
+        loop = asyncio.get_running_loop()
+        async with _model_lock:
+            if _model is not None and _active_count == 0:
+                if loop.time() - _last_used >= IDLE_TIMEOUT:
+                    _unload_model()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    global _model_lock
+    _model_lock = asyncio.Lock()
+    task = asyncio.create_task(_idle_watcher())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    async with _model_lock:
+        _unload_model()
+
+
+app = FastAPI(title="Harmony Transcription API", lifespan=lifespan)
 
 
 def _fmt_ts(seconds: float) -> str:
@@ -36,8 +87,7 @@ def _fmt_ts(seconds: float) -> str:
     return f"{int(mins):02d}:{secs:04.1f}"
 
 
-def _run_transcription(audio_path: Path) -> str:
-    model = _get_model()
+def _run_transcription(audio_path: Path, model) -> str:
     segments, _info = model.transcribe(str(audio_path))
     lines = [
         f"[{_fmt_ts(seg.start)} -> {_fmt_ts(seg.end)}] {seg.text.strip()}"
@@ -59,6 +109,8 @@ def _wrap_markdown(transcript: str, filename: str, generated_at: str) -> str:
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile):
+    global _last_used, _active_count
+
     suffix = Path(file.filename or "upload").suffix.lower()
     if suffix not in _MEDIA_EXTENSIONS:
         raise HTTPException(
@@ -70,13 +122,22 @@ async def transcribe(file: UploadFile):
         tmp_path = Path(tmp.name)
         tmp.write(await file.read())
 
+    async with _model_lock:
+        model = _load_model()
+        _active_count += 1
+
     try:
-        transcript = _run_transcription(tmp_path)
+        loop = asyncio.get_running_loop()
+        transcript = await loop.run_in_executor(None, _run_transcription, tmp_path, model)
     except Exception as exc:
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}") from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
+        async with _model_lock:
+            _active_count -= 1
+            _last_used = asyncio.get_running_loop().time()
 
-    tmp_path.unlink(missing_ok=True)
     generated_at = datetime.datetime.now().isoformat(timespec="seconds")
     markdown = _wrap_markdown(transcript, file.filename or "upload", generated_at)
 
@@ -85,4 +146,4 @@ async def transcribe(file: UploadFile):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "model_loaded": _model is not None}
