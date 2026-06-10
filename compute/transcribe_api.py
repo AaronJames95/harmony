@@ -20,7 +20,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 _MEDIA_EXTENSIONS = {".mp4", ".mov", ".mp3", ".m4a", ".wav", ".ogg", ".webm"}
@@ -87,8 +87,17 @@ def _fmt_ts(seconds: float) -> str:
     return f"{int(mins):02d}:{secs:04.1f}"
 
 
-def _run_transcription(audio_path: Path, model) -> str:
-    segments, _info = model.transcribe(str(audio_path))
+def _run_transcription(audio_path: Path, model, music: bool = False) -> str:
+    kwargs = {}
+    if music:
+        # Music vocals confuse Whisper's language-model conditioning: an early
+        # mistranscribed phrase (e.g. a count-in) gets fed back as context and
+        # the model repeats it for the rest of the track. Disabling it plus a
+        # temperature fallback ladder lets Whisper escape repetition loops.
+        kwargs["condition_on_previous_text"] = False
+        kwargs["temperature"] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        kwargs["vad_filter"] = True
+    segments, _info = model.transcribe(str(audio_path), **kwargs)
     lines = [
         f"[{_fmt_ts(seg.start)} -> {_fmt_ts(seg.end)}] {seg.text.strip()}"
         for seg in segments
@@ -108,7 +117,7 @@ def _wrap_markdown(transcript: str, filename: str, generated_at: str) -> str:
 
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile):
+async def transcribe(file: UploadFile, music: bool = Form(False)):
     global _last_used, _active_count
 
     suffix = Path(file.filename or "upload").suffix.lower()
@@ -128,7 +137,7 @@ async def transcribe(file: UploadFile):
 
     try:
         loop = asyncio.get_running_loop()
-        transcript = await loop.run_in_executor(None, _run_transcription, tmp_path, model)
+        transcript = await loop.run_in_executor(None, _run_transcription, tmp_path, model, music)
     except Exception as exc:
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}") from exc
