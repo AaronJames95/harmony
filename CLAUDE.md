@@ -15,9 +15,9 @@ inbox. It runs across two machines connected by Tailscale.
 - **Conductor** (NUC, Ubuntu, always-on, no GPU): orchestrator + storage. Runs the
   scheduler, file watcher, job dispatch, inbox delivery, Nextcloud, the vault, Git.
   Code lives in `control/`. **Never runs models here.**
-- **Forge** (workstation, Mint, RTX 3090 24GB): compute. Runs faster-whisper and
-  Ollama, does transcription + extraction + weekly/quarterly model calls. Code lives
-  in `compute/`. Conductor dispatches jobs to Forge's Ollama over the tailnet.
+- **Forge** (workstation, Mint, RTX 3090 24GB): GPU compute. Runs faster-whisper for
+  transcription. Code lives in `compute/`. Extraction, reviews, recurring agents, and
+  bootstrap all call the Claude API directly (see rule 5) — no local LLM inference.
 
 Monorepo layout:
 ```
@@ -39,19 +39,20 @@ Monorepo layout:
    `.env`, `secrets*`. Test only against `samples/` (synthetic or redacted).
 2. **Never hardcode secrets.** API keys come from environment / a gitignored
    `.env`. No keys in source, ever.
-3. **Structured output on every LLM call.** Local (Ollama): pass a JSON schema via
-   the `format` field. Claude API: use tool-use with the schema forced via
+3. **Structured output on every LLM call.** Use tool-use with the schema forced via
    `tool_choice`. Always validate; on failure, retry once then fall back to a
    json-repair pass. Raw `json.loads` on a free-text completion is not acceptable —
    it is the known cause of past data loss.
 4. **All batch jobs are resumable.** Skip already-processed days. Safe to restart.
-5. **Local-first.** Raw reflections stay on Harmony. The Claude API is used only for
-   the rare, one-time bootstrap synthesis, and only on compressed/anonymized input.
-6. **No 70B locally.** It exceeds 24GB VRAM and crawls. Use the model table below.
-7. **Distress is the exception to the inbox model.** If any stage detects acute
+5. **Claude API for all LLM calls.** Extraction, weekly/monthly/quarterly reviews,
+   recurring agents, and bootstrap all send their input (raw or derived reflection
+   text) to the Claude API. This is an accepted tradeoff — we trust Anthropic's data
+   handling. Transcription (Whisper) still runs locally on Forge; raw audio/video
+   never needs to leave the tailnet.
+6. **Distress is the exception to the inbox model.** If any stage detects acute
    distress, it must surface a path to a **human**, never file it silently to a
    folder, and the system is never positioned as a crisis safety net.
-8. **MVP, one stage at a time.** Build the smallest working version of the current
+7. **MVP, one stage at a time.** Build the smallest working version of the current
    stage, get its validation gate to pass, commit, then stop. Do not scaffold
    future stages.
 
@@ -60,21 +61,19 @@ Monorepo layout:
 | Task | Model |
 |---|---|
 | Transcription | faster-whisper `large-v3` (int8/fp16) on Forge |
-| Daily extraction | small local model, ~8–14B Q4 via Ollama |
-| Weekly / quarterly | Qwen 3 32B Q4 via Ollama |
-| One-time bootstrap synthesis | Claude API, Opus-tier, anonymized input |
+| Daily extraction, reviews, recurring agents, bootstrap | Claude API, `claude-sonnet-4-5` |
 
 ## Build order (with validation gates)
 
 - **Stage 0 — Backlog.** (a) per-day combine script; (b) faster-whisper batch
-  transcription (resumable); (c) resumable Ollama extraction with structured output.
-  Gate: spot-check 10 random extracted sample days against their source — real
-  capture, no hallucination.
+  transcription (resumable); (c) resumable Claude API extraction with structured
+  output. Gate: spot-check 10 random extracted sample days against their source —
+  real capture, no hallucination.
 - **Stage 1 — Foundation.** Going-forward daily extraction + a file watcher on
   Conductor that dispatches to Forge. Gate: drop a sample file, a structured note
   appears with no manual step; empty days still produce an absence note.
-- **Stage 2 — Weekly review.** Pull last 7 extracts, run 32B, write to `weekly/`.
-  Gate: output rings true against a known sample week.
+- **Stage 2 — Weekly review.** Pull last 7 extracts, run via Claude API, write to
+  `weekly/`. Gate: output rings true against a known sample week.
 - **Stage 3 — First agents (pick two).** Follow-through agent + quarterly letter.
   Inbox delivery pattern. Gate: something useful and not noisy lands in `/inbox`.
 - Stage 4+ — only after the above earns it.
@@ -96,8 +95,11 @@ Fill these in as you build each piece; keep this list current.
 # (compute/) combine legacy backlog: python compute/combine.py --inputs samples/legacy --format legacy --out out/
 # (compute/) combine new-template:   python compute/combine.py --inputs samples/new --format new_template --out out/
 # (compute/) transcribe backlog:     python compute/transcribe.py --inputs <media-dir> --out <out-dir>
-# (compute/) extract one day:        <cmd>
-# (compute/) run weekly review:      <cmd>
+# (compute/) backfill vault from sources: python compute/backfill.py
+# (compute/) extract all daily notes:     python compute/extract_daily.py
+# (compute/) extract one file:            python compute/extract_daily.py --file /path/to/YYYY-MM-DD.md
+# (compute/) run weekly review:           python compute/weekly_review.py
+# (compute/) run bootstrap analysis:      python compute/bootstrap.py
 # (control/) start the watcher:      <cmd>
 # run tests:                         .venv/bin/python -m pytest tests/ -v
 ```
