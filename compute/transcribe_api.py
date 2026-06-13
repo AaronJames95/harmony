@@ -21,7 +21,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
+
+from .denoise import denoise_audio
 
 _MEDIA_EXTENSIONS = {".mp4", ".mov", ".mp3", ".m4a", ".wav", ".ogg", ".webm"}
 
@@ -151,6 +154,39 @@ async def transcribe(file: UploadFile, music: bool = Form(False)):
     markdown = _wrap_markdown(transcript, file.filename or "upload", generated_at)
 
     return JSONResponse({"transcript": markdown, "filename": file.filename or "upload"})
+
+
+@app.post("/clean")
+async def clean(file: UploadFile):
+    suffix = Path(file.filename or "upload").suffix.lower()
+    if suffix not in _MEDIA_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{suffix}'. Accepted: {sorted(_MEDIA_EXTENSIONS)}",
+        )
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        tmp.write(await file.read())
+
+    try:
+        loop = asyncio.get_running_loop()
+        cleaned_path = await loop.run_in_executor(None, denoise_audio, tmp_path)
+    except Exception as exc:
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"Denoising failed: {exc}") from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    stem = Path(file.filename or "upload").stem
+    download_name = f"{stem}_denoised.mp3"
+
+    return FileResponse(
+        cleaned_path,
+        media_type="audio/mpeg",
+        filename=download_name,
+        background=BackgroundTask(cleaned_path.unlink),
+    )
 
 
 @app.get("/health")

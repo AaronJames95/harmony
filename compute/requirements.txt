@@ -3,3 +3,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 anthropic
+# Pinned: deepfilternet 0.5.6 imports torchaudio.backend.common, removed in torchaudio 2.9+
+torch==2.8.0
+torchaudio==2.8.0
+deepfilternet
